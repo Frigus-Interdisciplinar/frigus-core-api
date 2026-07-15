@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.TransactionStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -29,7 +30,8 @@ public class TransactionEvent {
     private Transaction transaction;
 
     @Column(name = "status", columnDefinition = "transaction_status_enum not null")
-    private Object status;
+    @Enumerated(EnumType.STRING)
+    private TransactionStatus status;
 
     @Column(name = "message", length = Integer.MAX_VALUE)
     private String message;

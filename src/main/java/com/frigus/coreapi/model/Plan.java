@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.BillingInterval;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -34,7 +35,8 @@ public class Plan {
     private BigDecimal price;
 
     @Column(name = "billing_interval", columnDefinition = "billing_interval_enum")
-    private Object billingInterval;
+    @Enumerated(EnumType.STRING)
+    private BillingInterval billingInterval;
 
     @NotNull
     @ColumnDefault("true")

@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.MessageType;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -34,7 +35,8 @@ public class Message {
     private ConversationParticipant conversationParticipants;
 
     @Column(name = "message_type", columnDefinition = "message_type_enum not null")
-    private Object messageType;
+    @Enumerated(EnumType.STRING)
+    private MessageType messageType;
 
     @Column(name = "content", length = Integer.MAX_VALUE)
     private String content;

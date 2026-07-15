@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.ListStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -36,7 +37,8 @@ public class ShoppingList {
     private Stock stock;
 
     @Column(name = "status", columnDefinition = "list_status_enum not null")
-    private Object status;
+    @Enumerated(EnumType.STRING)
+    private ListStatus status;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

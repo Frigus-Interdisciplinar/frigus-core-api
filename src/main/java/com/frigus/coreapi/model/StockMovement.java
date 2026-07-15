@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.MovementType;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -34,7 +35,8 @@ public class StockMovement {
     private User user;
 
     @Column(name = "movement_type", columnDefinition = "movement_type_enum not null")
-    private Object movementType;
+    @Enumerated(EnumType.STRING)
+    private MovementType movementType;
 
     @NotNull
     @Column(name = "quantity", nullable = false)

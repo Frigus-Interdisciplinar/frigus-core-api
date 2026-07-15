@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.ConversationType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
@@ -23,7 +24,8 @@ public class Conversation {
     private UUID id;
 
     @Column(name = "conversation_type", columnDefinition = "conversation_type_enum not null")
-    private Object conversationType;
+    @Enumerated(EnumType.STRING)
+    private ConversationType conversationType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @OnDelete(action = OnDeleteAction.SET_NULL)

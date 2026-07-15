@@ -1,5 +1,7 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.PaymentMethod;
+import com.frigus.coreapi.enums.TransactionStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -35,7 +37,8 @@ public class Transaction {
     private BigDecimal amount;
 
     @Column(name = "payment_method", columnDefinition = "payment_method_enum not null")
-    private Object paymentMethod;
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
 
     @Size(max = 4)
     @Column(name = "fake_card_last4", length = 4)
@@ -46,7 +49,8 @@ public class Transaction {
 
     @ColumnDefault("'Pendente'")
     @Column(name = "status", columnDefinition = "transaction_status_enum not null")
-    private Object status;
+    @Enumerated(EnumType.STRING)
+    private TransactionStatus status;
 
     @Column(name = "queue_job_id", length = Integer.MAX_VALUE)
     private String queueJobId;

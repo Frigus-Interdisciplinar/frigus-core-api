@@ -1,5 +1,6 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.SubscriptionStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -34,9 +35,10 @@ public class Subscription {
     @JoinColumn(name = "plan_id", nullable = false)
     private Plan plan;
 
-    @ColumnDefault("'Trial'")
+    @ColumnDefault("'TRIAL'")
     @Column(name = "status", columnDefinition = "subscription_status_enum not null")
-    private Object status;
+    @Enumerated(EnumType.STRING)
+    private SubscriptionStatus status;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

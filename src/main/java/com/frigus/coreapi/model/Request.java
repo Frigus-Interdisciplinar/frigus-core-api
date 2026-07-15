@@ -60,7 +60,6 @@ public class Request {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @OnDelete(action = OnDeleteAction.SET_NULL)
-    private Message messages;
-
-
+    @JoinColumn(name = "message_id")
+    private Message message;
 }

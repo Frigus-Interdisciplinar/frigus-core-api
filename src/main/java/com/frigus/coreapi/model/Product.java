@@ -1,5 +1,7 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.StoragePlace;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -26,10 +28,12 @@ public class Product {
     private String name;
 
     @Column(name = "category", columnDefinition = "category_enum not null")
-    private Object category;
+    @Enumerated(EnumType.STRING)
+    private Category category;
 
     @Column(name = "storage_place", columnDefinition = "storage_place_enum not null")
-    private Object storagePlace;
+    @Enumerated(EnumType.STRING)
+    private StoragePlace storagePlace;
 
     @NotNull
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)

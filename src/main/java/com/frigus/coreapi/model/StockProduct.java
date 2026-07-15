@@ -1,5 +1,7 @@
 package com.frigus.coreapi.model;
 
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.ProductStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -44,10 +46,12 @@ public class StockProduct {
     private LocalDate expireDate;
 
     @Column(name = "product_status", columnDefinition = "product_status_enum")
-    private Object productStatus;
+    @Enumerated(EnumType.STRING)
+    private ProductStatus productStatus;
 
     @Column(name = "category", columnDefinition = "category_enum not null")
-    private Object category;
+    @Enumerated(EnumType.STRING)
+    private Category category;
 
 
 }

@@ -1,9 +1,7 @@
 package com.frigus.coreapi.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import com.frigus.coreapi.enums.AccountType;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
@@ -33,7 +31,8 @@ public class User {
     private LocalDate birthDate;
 
     @Column(name = "account_type", columnDefinition = "account_type_enum not null")
-    private Object accountType;
+    @Enumerated(EnumType.STRING)
+    private AccountType accountType;
 
     @NotNull
     @Column(name = "email", nullable = false, length = Integer.MAX_VALUE)
