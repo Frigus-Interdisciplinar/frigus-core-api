@@ -4,20 +4,16 @@ on:
     branches: [main, dev]
   push:
     branches: [main, dev]
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
   pipeline:
     name: Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     services:
       postgres:
         image: postgres:16
@@ -32,7 +28,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7
         ports:
@@ -42,13 +37,12 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     env:
       DATABASE_URL: jdbc:postgresql://localhost:5432/frigus_test
       DATABASE_USERNAME: test
       DATABASE_PASSWORD: test
       REDIS_URL: redis://localhost:6379
-
+      PGPASSWORD: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,6 +53,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply database schema
+        run: psql -h localhost -U test -d frigus_test -f db/script.sql
 
       - name: Grant execute permission for mvnw
         run: chmod +x mvnw

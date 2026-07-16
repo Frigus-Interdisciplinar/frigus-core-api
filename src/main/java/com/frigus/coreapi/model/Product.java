@@ -1,0 +1,52 @@
+package com.frigus.coreapi.model;
+
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.StoragePlace;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "products")
+public class Product {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @NotNull
+    @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
+    private String name;
+
+    @Column(name = "category", columnDefinition = "category_enum not null")
+    @Enumerated(EnumType.STRING)
+    private Category category;
+
+    @Column(name = "storage_place", columnDefinition = "storage_place_enum not null")
+    @Enumerated(EnumType.STRING)
+    private StoragePlace storagePlace;
+
+    @NotNull
+    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal unitPrice;
+
+    @NotNull
+    @Column(name = "unit_of_measure", nullable = false, length = Integer.MAX_VALUE)
+    private String unitOfMeasure;
+
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+
+}
