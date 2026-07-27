@@ -8,7 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 @RequiredArgsConstructor
-public abstract class BaseService<TModel, TId, TRequestDto, TReponseDto, TMapper extends BaseMapper<TModel, TReponseDto>, TRepository extends BaseRepository<TModel, TId>> {
+public abstract class BaseService<TModel, TId, TRequestDto, TReponseDto, TMapper extends BaseMapper<TModel, TReponseDto, TRequestDto>, TRepository extends BaseRepository<TModel, TId>> {
     protected final TRepository repository;
     protected final TMapper mapper;
 
