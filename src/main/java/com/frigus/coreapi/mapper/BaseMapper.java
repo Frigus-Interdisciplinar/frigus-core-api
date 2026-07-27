@@ -1,6 +1,8 @@
 package com.frigus.coreapi.mapper;
 
-public interface BaseMapper<TModel, TResponseDto> {
+import org.springframework.stereotype.Component;
+
+public interface BaseMapper<TModel, TResponseDto, TRequestDto> {
     TResponseDto toDto(TModel model);
-    TModel toEntity(TResponseDto dto);
+    TModel toEntity(TRequestDto dto);
 }
