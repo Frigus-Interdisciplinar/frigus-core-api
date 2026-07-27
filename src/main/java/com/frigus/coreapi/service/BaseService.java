@@ -8,15 +8,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 @RequiredArgsConstructor
-public abstract class BaseService<TModel, TId, TRequestDto, TReponseDto, TMapper extends BaseMapper<TModel, TReponseDto, TRequestDto>, TRepository extends BaseRepository<TModel, TId>> {
+public abstract class BaseService<TModel, TId, TRequestDto, TResponseDto, TMapper extends BaseMapper<TModel, TResponseDto, TRequestDto>, TRepository extends BaseRepository<TModel, TId>> {
     protected final TRepository repository;
     protected final TMapper mapper;
 
-    public Page<TReponseDto> findAll(Pageable pageable) {
+    public Page<TResponseDto> findAll(Pageable pageable) {
         return repository.findAll(pageable).map(mapper::toDto);
     }
 
-    public TReponseDto findById(TId id) {
+    public TResponseDto findById(TId id) {
         return mapper.toDto(repository.findById(id).orElseThrow(NotFoundException::new));
     }
 
