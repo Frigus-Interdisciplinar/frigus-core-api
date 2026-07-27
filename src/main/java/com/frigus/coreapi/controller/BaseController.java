@@ -22,18 +22,17 @@ public abstract class BaseController<
     }
 
     @GetMapping
-    public ResponseEntity<Page<TResponseDto>> findAll(Pageable pageable) {
-        return ResponseEntity.ok(service.findAll(pageable));
+    public Page<TResponseDto> findAll(Pageable pageable) {
+        return service.findAll(pageable);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TResponseDto> findById(@PathVariable TId id) {
-        return ResponseEntity.ok(service.findById(id));
+    public TResponseDto findById(@PathVariable TId id) {
+        return service.findById(id);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable TId id) {
+    public void delete(@PathVariable TId id) {
         service.delete(id);
-        return ResponseEntity.noContent().build();
     }
 }
