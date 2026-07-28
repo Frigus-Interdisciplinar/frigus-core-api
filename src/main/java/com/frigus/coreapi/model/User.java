@@ -1,6 +1,8 @@
 package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.SubscriptionStatus;
+
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -47,5 +49,17 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    private Subscription subscription;
 
+
+    public String getPlanNameFromUser() {
+        Subscription subscription = this.getSubscription();
+
+        if(subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            return subscription.getPlan().getName();
+        }
+
+        return "Frigus Free";
+    }
 }
