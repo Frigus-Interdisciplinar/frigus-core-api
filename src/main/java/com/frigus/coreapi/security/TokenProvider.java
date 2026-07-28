@@ -5,14 +5,12 @@ import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import com.auth0.jwt.JWT;
 import com.frigus.coreapi.model.User;
 
 import java.util.Date;
-import java.util.UUID;
 
 @Component
 public class TokenProvider {
