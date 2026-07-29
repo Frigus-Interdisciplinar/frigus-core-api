@@ -1,6 +1,7 @@
 package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.enums.SubscriptionStatus;
 
 import jakarta.persistence.*;
@@ -48,6 +49,12 @@ public class User {
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("USER")
+    @Column(name = "role", nullable = false)
+    private Role role;
 
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private Subscription subscription;
