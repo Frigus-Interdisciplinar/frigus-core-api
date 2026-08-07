@@ -1,44 +1,55 @@
 package com.frigus.coreapi.service;
 
-import com.frigus.coreapi.dto.user.UserPatchRequestDto;
-import com.frigus.coreapi.dto.user.UserPutRequestDto;
-import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
-import com.frigus.coreapi.dto.user.UserResponseDto;
+import com.frigus.coreapi.dto.user.*;
+import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.UserMapper;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserRepository;
-import com.frigus.coreapi.utils.ServiceUtils;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
 @Service
 public class UserService extends BaseService<User, UUID, UserRegisterRequestDto, UserResponseDto, UserMapper, UserRepository> {
-    public UserService(UserRepository repository, UserMapper mapper) {
+
+    private final PasswordEncoder passwordEncoder;
+
+    public UserService(UserRepository repository, UserMapper mapper, PasswordEncoder passwordEncoder) {
         super(repository, mapper);
+        this.passwordEncoder = passwordEncoder;
     }
 
-    public UserResponseDto updateProfile(User currentUser, UserPutRequestDto dto) {
-        currentUser.setName(dto.getName());
-        currentUser.setBirthDate(dto.getBirthDate());
+    public UserResponseDto findByEmail(String email) {
+        User user = repository.findByEmail(email)
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Nenhum usuário foi encontrado com o e-mail informado"));
+        return mapper.toDto(user);
+    }
 
-        User savedUser = repository.save(currentUser);
+    public UserResponseDto updateUserRole(UUID userId, UserRoleUpdateDto dto) {
+        User user = repository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário não encontrado para atualização de role"));
+        user.setRole(dto.getRole());
+        User savedUser = repository.save(user);
         return mapper.toDto(savedUser);
     }
 
-    public UserResponseDto patchProfile(User currentUser, UserPatchRequestDto dto) {
-        if (dto.getName() != null && !dto.getName().isBlank()) {
-            currentUser.setName(dto.getName());
-        }
-        if (dto.getBirthDate() != null) {
-            currentUser.setBirthDate(dto.getBirthDate());
-        }
-
-        User savedUser = repository.save(currentUser);
+    public UserResponseDto updateAccountType(UUID userId, UserAccountTypeUpdateDto dto) {
+        User user = repository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário não encontrado para atualização de tipo de conta"));
+        user.setAccountType(dto.getAccountType());
+        User savedUser = repository.save(user);
         return mapper.toDto(savedUser);
     }
 
-    public UserResponseDto getProfile() {
-        return mapper.toDto(ServiceUtils.getCurrentUser());
+    public void adminResetPassword(UUID userId, UserAdminResetPasswordDto dto) {
+        User user = repository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário não encontrado para reset de senha"));
+        user.setHashPassword(passwordEncoder.encode(dto.getNewPassword()));
+        repository.save(user);
+    }
+
+    public void deleteUser(UUID userId) {
+        delete(userId);
     }
 }

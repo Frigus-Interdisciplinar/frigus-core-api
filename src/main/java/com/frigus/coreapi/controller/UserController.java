@@ -1,45 +1,47 @@
 package com.frigus.coreapi.controller;
 
-import com.frigus.coreapi.dto.user.UserPatchRequestDto;
-import com.frigus.coreapi.dto.user.UserPutRequestDto;
-import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
-import com.frigus.coreapi.dto.user.UserResponseDto;
-import com.frigus.coreapi.mapper.UserMapper;
+import com.frigus.coreapi.dto.user.*;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.service.UserService;
 import jakarta.validation.Valid;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
 @RestController
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/user")
 public class UserController extends BaseController<User, UUID, UserRegisterRequestDto, UserResponseDto, UserService> {
 
-    private final UserMapper userMapper;
-    
-    protected UserController(UserService service, UserMapper userMapper) {
+    protected UserController(UserService service) {
         super(service);
-        this.userMapper = userMapper;
     }
 
-    @GetMapping("/me")
-    public UserResponseDto getProfile(@AuthenticationPrincipal User currentUser) {
-        return userMapper.toDto(currentUser);
+    @GetMapping("/search")
+    public UserResponseDto findByEmail(@RequestParam String email) {
+        return service.findByEmail(email);
     }
 
-    @PutMapping("/me")
-    public UserResponseDto updateProfile(
-            @AuthenticationPrincipal User currentUser,
-            @Valid @RequestBody UserPutRequestDto dto) {
-        return service.updateProfile(currentUser, dto);
+    @PatchMapping("/{id}/role")
+    public UserResponseDto updateUserRole(
+            @PathVariable UUID id,
+            @Valid @RequestBody UserRoleUpdateDto dto) {
+        return service.updateUserRole(id, dto);
     }
 
-    @PatchMapping("/me")
-    public UserResponseDto patchProfile(
-            @AuthenticationPrincipal User currentUser,
-            @RequestBody UserPatchRequestDto dto) {
-        return service.patchProfile(currentUser, dto);
+    @PatchMapping("/{id}/account-type")
+    public UserResponseDto updateAccountType(
+            @PathVariable UUID id,
+            @Valid @RequestBody UserAccountTypeUpdateDto dto) {
+        return service.updateAccountType(id, dto);
+    }
+
+    @PatchMapping("/{id}/password")
+    public void adminResetPassword(
+            @PathVariable UUID id,
+            @Valid @RequestBody UserAdminResetPasswordDto dto) {
+        service.adminResetPassword(id, dto);
     }
 }
