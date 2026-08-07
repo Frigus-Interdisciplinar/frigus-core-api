@@ -22,6 +22,7 @@ import java.util.UUID;
 @Table(name = "users")
 public class User {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @ColumnDefault("gen_random_uuid()")
     @Column(name = "id", nullable = false)
     private UUID id;
@@ -63,10 +64,20 @@ public class User {
     public String getPlanNameFromUser() {
         Subscription subscription = this.getSubscription();
 
-        if(subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
             return subscription.getPlan().getName();
         }
 
         return "Frigus Free";
+    }
+
+    public String getPlanCodeFromUser() {
+        Subscription subscription = this.getSubscription();
+
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            return subscription.getPlan().getPlanCode();
+        }
+
+        return "FREE";
     }
 }
