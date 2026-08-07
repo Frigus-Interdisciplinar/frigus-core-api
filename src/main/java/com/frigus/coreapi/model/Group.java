@@ -17,7 +17,7 @@ import java.util.UUID;
 @Table(name = "groups")
 public class Group {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", nullable = false)
     private UUID id;
 
