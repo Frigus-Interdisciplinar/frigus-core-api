@@ -1,23 +1,20 @@
 package com.frigus.coreapi.dto.user;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.frigus.coreapi.enums.AccountType;
+import jakarta.validation.constraints.Past;
 import lombok.*;
 
 import java.time.LocalDate;
-import java.util.UUID;
 
 @Getter
 @Setter
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserResponseDto {
-    private UUID id;
+public class UserPatchRequestDto {
     private String name;
-    private String email;
-    private AccountType accountType;
 
+    @Past(message = "A data de nascimento deve ser no passado")
     @JsonFormat(pattern = "dd/MM/yyyy")
     private LocalDate birthDate;
 }

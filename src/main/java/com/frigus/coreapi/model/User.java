@@ -1,6 +1,7 @@
 package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.enums.SubscriptionStatus;
 
 import jakarta.persistence.*;
@@ -21,6 +22,7 @@ import java.util.UUID;
 @Table(name = "users")
 public class User {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @ColumnDefault("gen_random_uuid()")
     @Column(name = "id", nullable = false)
     private UUID id;
@@ -49,6 +51,12 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("USER")
+    @Column(name = "role", nullable = false)
+    private Role role;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private Subscription subscription;
 
@@ -56,10 +64,20 @@ public class User {
     public String getPlanNameFromUser() {
         Subscription subscription = this.getSubscription();
 
-        if(subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
             return subscription.getPlan().getName();
         }
 
         return "Frigus Free";
+    }
+
+    public String getPlanCodeFromUser() {
+        Subscription subscription = this.getSubscription();
+
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            return subscription.getPlan().getPlanCode();
+        }
+
+        return "FREE";
     }
 }

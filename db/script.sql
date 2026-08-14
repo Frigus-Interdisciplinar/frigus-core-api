@@ -75,6 +75,8 @@ DROP TYPE IF EXISTS account_type_enum CASCADE;
 
 DROP TYPE IF EXISTS billing_interval_enum CASCADE;
 
+DROP TYPE IF EXISTS user_role_enum CASCADE;
+
 DROP TYPE IF EXISTS payment_method_enum CASCADE;
 
 DROP TYPE IF EXISTS subscription_status_enum CASCADE;
@@ -94,6 +96,8 @@ CREATE TYPE unit_of_measure_enum AS ENUM(
 );
 
 CREATE TYPE account_type_enum AS ENUM('DOMESTIC', 'BUSINESS', 'COMMERCIAL');
+
+CREATE TYPE user_role_enum AS ENUM('USER', 'ADMIN');
 
 CREATE TYPE category_enum AS ENUM(
   'FRUIT',
@@ -169,6 +173,7 @@ CREATE TABLE users (
   name VARCHAR NOT NULL,
   birth_date DATE,
   account_type account_type_enum NOT NULL,
+  role user_role_enum NOT NULL DEFAULT 'USER',
   email VARCHAR NOT NULL,
   hash_password VARCHAR NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -391,6 +396,7 @@ CREATE TABLE requests (
 
 CREATE TABLE plans (
   id SERIAL PRIMARY KEY,
+  plan_code VARCHAR(20) NOT NULL,
   name VARCHAR NOT NULL,
   description TEXT,
   price NUMERIC(10, 2) NOT NULL DEFAULT 0,
@@ -555,6 +561,10 @@ CREATE UNIQUE INDEX uq_plans_name_active ON plans (name)
 WHERE
   deleted_at IS NULL;
 
+CREATE UNIQUE INDEX uq_plans_code_active ON plans (plan_code)
+WHERE
+  deleted_at IS NULL;
+
 CREATE INDEX idx_plans_deleted_at ON plans (deleted_at);
 
 CREATE INDEX idx_groups_deleted_at ON groups (deleted_at);
@@ -615,6 +625,7 @@ EXECUTE FUNCTION fn_log_transaction_status_change ();
 -- ============================================================
 INSERT INTO
   plans (
+    plan_code,
     name,
     description,
     price,
@@ -623,6 +634,7 @@ INSERT INTO
   )
 VALUES
   (
+    'FREE',
     'Frigus Free',
     'Plano gratuito com funcionalidades básicas de controle de estoque.',
     0.00,
@@ -630,13 +642,23 @@ VALUES
     TRUE
   ),
   (
-    'Frigus Família',
+    'PLUS',
+    'Frigus Plus',
     'Plano para uso doméstico compartilhado entre membros da família.',
     29.99,
     'MONTHLY',
     TRUE
   ),
   (
+    'FAMILY',
+    'Frigus Família',
+    'Plano compartilhado para famílias maiores.',
+    49.99,
+    'MONTHLY',
+    TRUE
+  ),
+  (
+    'COMMERCIAL',
     'Frigus Comercial',
     'Plano para pequenos comércios com múltiplos estoques.',
     119.99,
@@ -644,6 +666,7 @@ VALUES
     TRUE
   ),
   (
+    'ENTERPRISE',
     'Frigus Empresarial',
     'Plano para empresas com necessidades avançadas de gestão.',
     159.99,

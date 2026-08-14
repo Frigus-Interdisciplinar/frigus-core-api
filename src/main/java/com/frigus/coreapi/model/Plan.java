@@ -3,6 +3,7 @@ package com.frigus.coreapi.model;
 import com.frigus.coreapi.enums.BillingInterval;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
 
@@ -47,6 +48,19 @@ public class Plan {
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Size(max = 20)
+    @NotNull
+    @Column(name = "plan_code", nullable = false, length = 20)
+    private String planCode;
 
 
 }
