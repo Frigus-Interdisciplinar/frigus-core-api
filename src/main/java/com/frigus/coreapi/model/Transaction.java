@@ -29,6 +29,10 @@ public class Transaction {
     private UUID id;
 
     @NotNull
+    @Column(name = "idempotency_key", length = 120, nullable = false, unique = true)
+    private String idempotencyKey;
+
+    @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

@@ -424,6 +424,7 @@ CREATE TABLE subscriptions (
 
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  idempotency_key VARCHAR(120) NOT NULL,
   user_id UUID NOT NULL,
   subscription_id UUID NOT NULL,
   plan_id INTEGER NOT NULL,
@@ -442,6 +443,7 @@ CREATE TABLE transactions (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_transactions_user_id_users FOREIGN KEY (user_id) REFERENCES users (id),
   CONSTRAINT fk_transactions_subscription_id_subscriptions FOREIGN KEY (subscription_id) REFERENCES subscriptions (id) ON DELETE CASCADE,
+  CONSTRAINT uq_transactions_idempotency_key UNIQUE (idempotency_key),
   CONSTRAINT fk_transactions_plan_id_plans FOREIGN KEY (plan_id) REFERENCES plans (id),
   CONSTRAINT chk_transactions_processed_at CHECK (
     (
