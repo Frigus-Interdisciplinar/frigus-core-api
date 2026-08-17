@@ -426,7 +426,7 @@ CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   idempotency_key VARCHAR(120) NOT NULL,
   user_id UUID NOT NULL,
-  subscription_id UUID NOT NULL,
+  subscription_id UUID,
   plan_id INTEGER NOT NULL,
   amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
   payment_method payment_method_enum NOT NULL,

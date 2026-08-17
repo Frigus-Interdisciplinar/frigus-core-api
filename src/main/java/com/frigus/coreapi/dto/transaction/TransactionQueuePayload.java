@@ -20,7 +20,7 @@ public class TransactionQueuePayload implements Serializable {
     private UUID transactionId;
     private String idempotencyKey;
     private UUID userId;
-    private Integer planId;
+    private String planCode;
     private BigDecimal amount;
     private PaymentMethod paymentMethod;
     private String fakeCardLast4;
