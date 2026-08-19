@@ -8,6 +8,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -36,6 +38,7 @@ public class User {
 
     @Column(name = "account_type", columnDefinition = "account_type_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private AccountType accountType;
 
     @NotNull
@@ -53,8 +56,9 @@ public class User {
 
     @NotNull
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @ColumnDefault("USER")
-    @Column(name = "role", nullable = false)
+    @Column(name = "role", nullable = false, columnDefinition = "user_role_enum not null")
     private Role role;
 
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
