@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,10 @@ public class TransactionService {
         Plan plan = planRepository.findByPlanCode(dto.getPlanCode())
                 .orElseThrow(() -> new BadRequestException("Plano não encontrado", "Plano com o código " + dto.getPlanCode() + " não foi encontrado"));
 
+        if (Boolean.FALSE.equals(plan.getActive())) {
+            throw new BadRequestException("Plano inativo", "Plano com o código " + dto.getPlanCode() + " não está dispoível para assinaturas");
+        }
+
         if (dto.getPaymentMethod() == PaymentMethod.PIX && dto.getFakePixKey() == null) {
             throw new BadRequestException("Chave PIX obrigatória", "Para pagamento via PIX, informe a chave PIX.");
         }
@@ -52,9 +57,16 @@ public class TransactionService {
 
         String idempotencyKey = generateIdempotencyKey(currentUser.getId(), plan.getPlanCode());
         Optional<Transaction> existingTransaction = transactionRepository.findByIdempotencyKey(idempotencyKey);
+
         if (existingTransaction.isPresent()) {
-            return transactionMapper.toDto(existingTransaction.get());
+            Transaction tx = existingTransaction.get();
+
+            if (tx.getStatus() == TransactionStatus.PENDING || tx.getStatus() == TransactionStatus.APPROVED || tx.getStatus() == TransactionStatus.PROCESSING) {
+                throw new BadRequestException("Transação pendente", "Já existe uma transação " + tx.getId() + " para o usuário e plano informados");
+            }
         }
+
+        idempotencyKey = idempotencyKey + ":retry:" + UUID.randomUUID().toString().substring(0, 8);
 
         Transaction transaction = Transaction.builder()
                 .idempotencyKey(idempotencyKey)
@@ -71,7 +83,15 @@ public class TransactionService {
                 .queuedAt(Instant.now())
                 .build();
 
-        transaction = transactionRepository.save(transaction);
+        try {
+            transaction = transactionRepository.save(transaction);
+        } catch (DataIntegrityViolationException e) {
+            return transactionRepository.findByIdempotencyKey(idempotencyKey)
+                .map(transactionMapper::toDto)
+                .orElseThrow(() -> e);
+        }
+
+        
 
         TransactionQueuePayload payload = TransactionQueuePayload.builder()
                 .transactionId(transaction.getId())
