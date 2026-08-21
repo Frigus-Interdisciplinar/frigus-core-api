@@ -1,7 +1,5 @@
 package com.frigus.coreapi.dto.transaction;
 
-import org.hibernate.validator.constraints.Length;
-
 import com.frigus.coreapi.enums.PaymentMethod;
 
 import jakarta.validation.constraints.NotNull;
