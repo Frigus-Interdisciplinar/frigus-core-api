@@ -16,6 +16,8 @@ public class TransactionMapper implements BaseMapper<Transaction, TransactionRes
                 .idempotencyKey(model.getIdempotencyKey())
                 .amount(model.getAmount())
                 .paymentMethod(model.getPaymentMethod())
+                .planCode(model.getPlan() != null ? model.getPlan().getPlanCode() : null)
+                .errorMessage(model.getErrorMessage())
                 .status(model.getStatus())
                 .createdAt(model.getCreatedAt())
                 .queuedAt(model.getQueuedAt())

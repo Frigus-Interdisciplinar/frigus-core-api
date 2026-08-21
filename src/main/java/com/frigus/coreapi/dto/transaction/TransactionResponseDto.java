@@ -22,6 +22,8 @@ public class TransactionResponseDto {
     private BigDecimal amount;
     private PaymentMethod paymentMethod;
     private String idempotencyKey;
+    private String planCode;
+    private String errorMessage;
     private Instant createdAt;
     private Instant queuedAt;
     private Instant processedAt;

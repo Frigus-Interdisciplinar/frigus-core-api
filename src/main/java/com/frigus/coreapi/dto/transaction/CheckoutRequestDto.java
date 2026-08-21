@@ -5,6 +5,8 @@ import org.hibernate.validator.constraints.Length;
 import com.frigus.coreapi.enums.PaymentMethod;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,10 +23,9 @@ public class CheckoutRequestDto {
     @NotNull(message = "Forma de pagamento deve ser informada")
     private PaymentMethod paymentMethod;
 
-    @Length(min = 4, max = 4, message = "Deve ter 4 digitos")
+    @Pattern(regexp = "^\\d{4}$", message = "Os últimos 4 dígitos do cartão devem conter exatamente 4 números")
     private String fakeCardLast4;
 
-    @Length(min = 10, message = "Deve ter pelo menos 10 digitos")
+    @Size(min = 10, max = 150, message = "A chave PIX deve ter entre 10 e 150 caracteres")
     private String fakePixKey;
-
 }
