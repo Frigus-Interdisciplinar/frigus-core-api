@@ -55,7 +55,7 @@ public class Transaction {
     @Column(name = "fake_pix_key", length = Integer.MAX_VALUE)
     private String fakePixKey;
 
-    @ColumnDefault("'Pendente'")
+    @ColumnDefault("'PENDING'")
     @Column(name = "status", columnDefinition = "transaction_status_enum not null")
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
