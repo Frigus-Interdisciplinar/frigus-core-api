@@ -7,8 +7,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -29,6 +31,10 @@ public class Transaction {
     private UUID id;
 
     @NotNull
+    @Column(name = "idempotency_key", length = 120, nullable = false, unique = true)
+    private String idempotencyKey;
+
+    @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -39,6 +45,7 @@ public class Transaction {
 
     @Column(name = "payment_method", columnDefinition = "payment_method_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private PaymentMethod paymentMethod;
 
     @Size(max = 4)
@@ -48,9 +55,10 @@ public class Transaction {
     @Column(name = "fake_pix_key", length = Integer.MAX_VALUE)
     private String fakePixKey;
 
-    @ColumnDefault("'Pendente'")
+    @ColumnDefault("'PENDING'")
     @Column(name = "status", columnDefinition = "transaction_status_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private TransactionStatus status;
 
     @Column(name = "queue_job_id", length = Integer.MAX_VALUE)
@@ -80,10 +88,9 @@ public class Transaction {
     @Column(name = "processed_at")
     private Instant processedAt;
 
-    @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @JoinColumn(name = "subscription_id", nullable = false)
+    @JoinColumn(name = "subscription_id")
     private Subscription subscription;
 
     @NotNull
