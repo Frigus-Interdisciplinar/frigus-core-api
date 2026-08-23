@@ -60,5 +60,32 @@ public class Subscription {
     @Column(name = "canceled_at")
     private Instant canceledAt;
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (startedAt == null) {
+            startedAt = Instant.now();
+        }
+        if (currentPeriodStart == null) {
+            currentPeriodStart = Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+        if (status == null) {
+            status = SubscriptionStatus.TRIAL;
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }
