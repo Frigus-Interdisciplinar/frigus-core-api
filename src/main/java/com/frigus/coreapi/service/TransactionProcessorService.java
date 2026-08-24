@@ -58,6 +58,13 @@ public class TransactionProcessorService {
             transaction.setErrorMessage("Pagamento Recusado - Cartão inválido ou saldo insuficiente");
             transactionRepository.save(transaction);
 
+            if (transaction.getSubscription() != null) {
+                Subscription sub = transaction.getSubscription();
+                sub.setStatus(SubscriptionStatus.DELINQUENT);
+                sub.setUpdatedAt(Instant.now());
+                subscriptionRepository.save(sub);
+            }
+
             recordEvent(transaction, TransactionStatus.REJECTED, transaction.getErrorMessage());
             log.info("Transação id={} rejeitada: {}", transaction.getId(), transaction.getErrorMessage());
             return;
@@ -91,6 +98,13 @@ public class TransactionProcessorService {
             transaction.setProcessedAt(Instant.now());
             transaction.setErrorMessage("Falha definitiva após " + attempts + " tentativas: " + errorMessage);
             transactionRepository.save(transaction);
+
+            if (transaction.getSubscription() != null) {
+                Subscription sub = transaction.getSubscription();
+                sub.setStatus(SubscriptionStatus.DELINQUENT);
+                sub.setUpdatedAt(Instant.now());
+                subscriptionRepository.save(sub);
+            }
 
             recordEvent(transaction, TransactionStatus.ERROR, transaction.getErrorMessage());
             log.error("Transação id={} atingiu limite de tentativas ({}) e foi marcada como ERROR", transaction.getId(), maxAttempts);
