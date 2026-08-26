@@ -41,9 +41,15 @@ public class PlanLimitsResolverService {
     }
 
     public PlanLimitsDto getLimitsForUser(UUID userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário"));
         
-        Plan plan = user.getSubscription().getPlan();
+        Subscription subscription = user.getSubscription();
+        if (subscription == null || subscription.getPlan() == null) {
+            return getLimitsForPlan(PlanCode.FREE);
+        }
+
+        Plan plan = subscription.getPlan();
         PlanCode planCode = PlanCode.valueOf(plan.getPlanCode()); 
 
         return getLimitsForPlan(planCode);
