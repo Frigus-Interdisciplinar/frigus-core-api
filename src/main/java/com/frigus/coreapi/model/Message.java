@@ -50,5 +50,8 @@ public class Message {
     @Column(name = "created_at")
     private Instant createdAt;
 
-
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 }
