@@ -2,6 +2,7 @@ package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.recipe.RecipeRequestDto;
 import com.frigus.coreapi.dto.recipe.RecipeResponseDto;
+import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.RecipeMapper;
 import com.frigus.coreapi.model.Recipe;
 import com.frigus.coreapi.repository.RecipeRepository;
@@ -22,12 +23,20 @@ public class RecipeService extends BaseService<Recipe, Integer, RecipeRequestDto
     }
 
     public RecipeResponseDto update(Integer id, RecipeRequestDto dto) {
-        Recipe recipe = repository.findById(id).orElseThrow(com.frigus.coreapi.exception.NotFoundException::new);
+        Recipe recipe = repository.findById(id)
+                .orElseThrow(NotFoundException::new);
         recipe.setName(dto.getName());
         recipe.setDescription(dto.getDescription());
         recipe.setInstructions(dto.getInstructions());
         recipe.setDomesticOnly(dto.getDomesticOnly() == null || dto.getDomesticOnly());
         recipe.setActive(dto.getActive() == null || dto.getActive());
         return mapper.toDto(repository.save(recipe));
+    }
+
+    public void deleteRecipe(Integer id) {
+        Recipe recipe = repository.findById(id)
+                .orElseThrow(NotFoundException::new);
+        recipe.setActive(false);
+        repository.save(recipe);
     }
 }
