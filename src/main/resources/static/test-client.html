@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frigus Core API - Dual Client Simulator (Gabriel vs Davi)</title>
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- SockJS and STOMP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        :root {
+            --bg-base: #070B12;
+            --bg-surface: #0E1626;
+            --bg-card: #152238;
+            --bg-input: #09101D;
+            --border-color: #243552;
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --primary: #38BDF8;
+            --accent: #818CF8;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: #0B1321;
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge-logo {
+            background: linear-gradient(135deg, #38BDF8, #6366F1);
+            color: #000;
+            font-weight: 800;
+            font-size: 13px;
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        .quick-flow-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #111D33;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .dual-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 12px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-column {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .user-header {
+            padding: 10px 14px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-title {
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-body {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            flex: 1;
+            overflow: hidden;
+            gap: 8px;
+            padding: 10px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .card-title {
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .btn {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .btn-primary { background: var(--primary); color: #070B12; }
+        .btn-primary:hover { background: #0284C7; color: #FFF; }
+        .btn-secondary { background: #1E2D4A; color: var(--text-primary); }
+        .btn-secondary:hover { background: #2A3E66; }
+        .btn-accent { background: var(--accent); color: #FFF; }
+        .btn-success { background: var(--success); color: #FFF; }
+
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+        input, select {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            outline: none;
+            width: 100%;
+        }
+
+        input:focus { border-color: var(--primary); }
+
+        .uuid-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            background: rgba(0,0,0,0.4);
+            padding: 3px 6px;
+            border-radius: 4px;
+            color: #38BDF8;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .uuid-badge:hover { background: rgba(56, 189, 248, 0.15); }
+
+        .chat-section {
+            background: #090F1C;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: var(--bg-card);
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .message-bubble {
+            max-width: 80%;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .msg-in {
+            align-self: flex-start;
+            background: #1A2840;
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 2px;
+        }
+
+        .msg-out {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #0284C7, #2563EB);
+            color: #FFF;
+            border-bottom-right-radius: 2px;
+        }
+
+        .msg-sender {
+            font-size: 10px;
+            font-weight: 700;
+            color: #38BDF8;
+            margin-bottom: 2px;
+        }
+
+        .msg-out .msg-sender { color: #BAE6FD; }
+
+        .msg-time {
+            font-size: 9px;
+            opacity: 0.7;
+            align-self: flex-end;
+            margin-top: 2px;
+        }
+
+        .chat-bottom {
+            padding: 8px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 6px;
+        }
+
+        .list-box {
+            max-height: 90px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .list-row {
+            background: var(--bg-input);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-size: 11px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .list-row:hover, .list-row.active {
+            border-color: var(--primary);
+            background: rgba(56, 189, 248, 0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            display: inline-block;
+        }
+
+        .status-dot.active {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+        }
+
+        .tag-pill {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        .tag-group { background: rgba(99, 102, 241, 0.2); color: #818CF8; }
+        .tag-dm { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+
+        /* ================= NETWORK / REQUEST INSPECTOR ================= */
+        .network-panel {
+            background: #0B1220;
+            border-top: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 100;
+        }
+
+        .network-panel.collapsed {
+            height: 38px !important;
+        }
+
+        .network-panel.expanded {
+            height: 270px;
+        }
+
+        .network-panel.maximized {
+            height: 480px;
+        }
+
+        .net-header-bar {
+            height: 38px;
+            background: #0d1729;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            font-size: 12px;
+            user-select: none;
+            cursor: pointer;
+            gap: 10px;
+        }
+
+        .net-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .net-title {
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary);
+        }
+
+        .net-pill {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .net-pill-count { background: #1E2D4A; color: #CBD5E1; }
+        .net-pill-ok { background: rgba(16, 185, 129, 0.15); color: #34D399; border-color: rgba(16, 185, 129, 0.3); }
+        .net-pill-err { background: rgba(239, 68, 68, 0.15); color: #F87171; border-color: rgba(239, 68, 68, 0.3); }
+        .net-pill-ws { background: rgba(129, 140, 248, 0.15); color: #A5B4FC; border-color: rgba(129, 140, 248, 0.3); }
+
+        .net-ticker {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 0 8px;
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+        }
+
+        .net-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .net-search-input {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            width: 150px;
+            height: 24px;
+        }
+
+        .net-filter-btn {
+            background: #152238;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .net-filter-btn:hover, .net-filter-btn.active {
+            background: var(--primary);
+            color: #070B12;
+            border-color: var(--primary);
+        }
+
+        .net-body-container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            flex: 1;
+            overflow: hidden;
+            background: #080D18;
+        }
+
+        .net-list-pane {
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #090F1C;
+        }
+
+        .net-list-scroll {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .net-item-row {
+            display: grid;
+            grid-template-columns: 52px 42px 1fr auto;
+            gap: 6px;
+            align-items: center;
+            padding: 6px 8px;
+            border-bottom: 1px solid #142036;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .net-item-row:hover {
+            background: rgba(56, 189, 248, 0.08);
+        }
+
+        .net-item-row.selected {
+            background: rgba(56, 189, 248, 0.16);
+            border-left: 3px solid var(--primary);
+        }
+
+        .badge-method {
+            font-weight: 800;
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            text-align: center;
+            letter-spacing: 0.3px;
+        }
+        .badge-get { background: rgba(56, 189, 248, 0.2); color: #38BDF8; }
+        .badge-post { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+        .badge-put { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+        .badge-delete { background: rgba(239, 68, 68, 0.2); color: #F87171; }
+        .badge-ws { background: rgba(129, 140, 248, 0.25); color: #A5B4FC; }
+
+        .badge-status {
+            font-weight: 700;
+            font-size: 10px;
+            text-align: center;
+        }
+        .badge-status.s-2xx { color: #34D399; }
+        .badge-status.s-3xx { color: #38BDF8; }
+        .badge-status.s-4xx { color: #FBBF24; }
+        .badge-status.s-5xx { color: #F87171; }
+        .badge-status.s-pending { color: #94A3B8; animation: pulse 1s infinite alternate; }
+
+        .net-item-path {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #E2E8F0;
+            font-size: 11px;
+        }
+
+        .net-item-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            font-size: 9px;
+            color: #64748B;
+        }
+
+        .net-item-user-tag {
+            font-size: 8px;
+            font-weight: 700;
+            padding: 1px 3px;
+            border-radius: 2px;
+            background: #1e293b;
+            color: #94a3b8;
+            margin-top: 1px;
+        }
+
+        /* Detail pane on right */
+        .net-detail-pane {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #080D18;
+        }
+
+        .net-detail-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
+            height: 100%;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .net-detail-header {
+            padding: 8px 12px;
+            background: #0d1729;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .net-detail-title-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        .net-detail-url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            color: #F8FAFC;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .net-tabs-bar {
+            display: flex;
+            gap: 4px;
+            padding: 6px 12px;
+            background: #0A111F;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .net-tab-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .net-tab-btn:hover {
+            color: var(--text-primary);
+            background: #142036;
+        }
+
+        .net-tab-btn.active {
+            background: #1E2D4A;
+            color: var(--primary);
+            border-color: #2F456C;
+        }
+
+        .net-detail-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        .code-block-viewer {
+            background: #04070D;
+            border: 1px solid #1A2840;
+            border-radius: 6px;
+            padding: 10px;
+            color: #E2E8F0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .key-val-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-bottom: 12px;
+        }
+
+        .key-val-table td {
+            padding: 4px 8px;
+            border-bottom: 1px solid #142036;
+            vertical-align: top;
+        }
+
+        .key-val-table td:first-child {
+            color: #64748B;
+            width: 130px;
+            font-weight: 600;
+        }
+
+        .key-val-table td:last-child {
+            color: #CBD5E1;
+            word-break: break-all;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand-box">
+            <span class="badge-logo">FRIGUS</span>
+            <strong style="font-size: 14px;">Simulador de Chat em Tempo Real (Duplo Usuário)</strong>
+        </div>
+
+        <div class="quick-flow-bar">
+            <span>⚡ Fluxo Automático Rápido:</span>
+            <button class="btn btn-primary btn-sm" onclick="autoSetupAll()">🚀 1-Clique: Logar Ambos + Criar Grupo + Conectar Chat</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleNetworkPanel()">🛰️ Inspecionar Requests (<span id="header-req-count">0</span>)</button>
+        </div>
+    </header>
+
+    <div class="dual-container">
+        <!-- ====================== USER 1: GABRIEL ====================== -->
+        <div class="user-column" id="col-u1">
+            <div class="user-header">
+                <div class="user-title">
+                    <span>👨‍💻 Usuário 1: Gabriel Mendes</span>
+                    <span class="status-dot" id="u1-ws-dot"></span>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="loginU1()">🔑 Logar Gabriel</button>
+            </div>
+
+            <div class="user-body">
+                <div class="controls-grid">
+                    <!-- U1 PROFILE & GROUPS -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Perfil & Família</span>
+                            <span id="u1-role-tag" class="tag-pill tag-group">DOMESTIC</span>
+                        </div>
+                        <div class="uuid-badge" onclick="copyUId('u1')" title="Clique para copiar">
+                            <span id="u1-uid-text">ID: 596df96a-7d7c-4efc-89ef-bade51334d72</span>
+                            <span>📋</span>
+                        </div>
+
+                        <div style="display: flex; gap: 4px; margin-top: 4px;">
+                            <input type="text" id="u1-group-name" placeholder="Nome Grupo" value="Família Mendes">
+                            <button class="btn btn-secondary btn-sm" onclick="createGroupU1()">Criar</button>
+                        </div>
+
+                        <div class="card-title" style="margin-top: 4px;">Grupos de Pessoas:</div>
+                        <div class="list-box" id="u1-groups-list">
+                            <div style="color: var(--text-secondary); font-size: 10px;">Clique em logar para carregar.</div>
+                        </div>
+
+                        <div style="display: flex; gap: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">
+                            <input type="text" id="u1-invite-uid" placeholder="UUID p/ convidar" value="aabecd3e-26bc-4c20-8ee2-a905d7460169">
+                            <button class="btn btn-success btn-sm" onclick="inviteMemberU1()">+ Convidar Davi</button>
+                        </div>
+                    </div>
+
+                    <!-- U1 CONVERSATIONS -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Conversas Ativas</span>
+                            <button class="btn btn-secondary btn-sm" style="padding: 1px 5px;" onclick="loadConversationsU1()">🔄</button>
+                        </div>
+                        
+                        <div class="list-box" id="u1-convs-list" style="height: 100px;">
+                            <div style="color: var(--text-secondary); font-size: 10px;">Nenhuma conversa carregada.</div>
+                        </div>
+
+                        <div style="display: flex; gap: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">
+                            <button class="btn btn-accent btn-sm" style="flex: 1;" onclick="openPrivateChatU1()">🔒 Abrir DM c/ Davi</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- U1 CHAT AREA -->
+                <div class="chat-section">
+                    <div class="chat-header">
+                        <span id="u1-chat-title">Chat: Nenhuma conversa</span>
+                        <span id="u1-chat-mode" class="tag-pill tag-dm">WebSocket STOMP</span>
+                    </div>
+
+                    <div class="chat-messages" id="u1-chat-msgs">
+                        <div style="text-align: center; color: var(--text-secondary); margin-top: 30px; font-size: 11px;">
+                            Faça login e selecione uma conversa para trocar mensagens em tempo real com o Davi.
+                        </div>
+                    </div>
+
+                    <div class="chat-bottom">
+                        <input type="text" id="u1-msg-input" placeholder="Mensagem do Gabriel..." onkeydown="if(event.key==='Enter') sendMsgU1()">
+                        <button class="btn btn-primary" onclick="sendMsgU1()">⚡ Enviar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====================== USER 2: DAVI ====================== -->
+        <div class="user-column" id="col-u2">
+            <div class="user-header">
+                <div class="user-title">
+                    <span>👨‍💻 Usuário 2: Davi Franco</span>
+                    <span class="status-dot" id="u2-ws-dot"></span>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="loginU2()">🔑 Logar Davi</button>
+            </div>
+
+            <div class="user-body">
+                <div class="controls-grid">
+                    <!-- U2 PROFILE & GROUPS -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Perfil & Família</span>
+                            <span id="u2-role-tag" class="tag-pill tag-group">DOMESTIC</span>
+                        </div>
+                        <div class="uuid-badge" onclick="copyUId('u2')" title="Clique para copiar">
+                            <span id="u2-uid-text">ID: aabecd3e-26bc-4c20-8ee2-a905d7460169</span>
+                            <span>📋</span>
+                        </div>
+
+                        <div class="card-title" style="margin-top: 4px;">Grupos de Pessoas:</div>
+                        <div class="list-box" id="u2-groups-list" style="height: 60px;">
+                            <div style="color: var(--text-secondary); font-size: 10px;">Clique em logar para carregar.</div>
+                        </div>
+
+                        <button class="btn btn-secondary btn-sm" onclick="loadGroupsU2()">🔄 Atualizar Grupos</button>
+                    </div>
+
+                    <!-- U2 CONVERSATIONS -->
+                    <div class="card">
+                        <div class="card-title">
+                            <span>Conversas Ativas</span>
+                            <button class="btn btn-secondary btn-sm" style="padding: 1px 5px;" onclick="loadConversationsU2()">🔄</button>
+                        </div>
+                        
+                        <div class="list-box" id="u2-convs-list" style="height: 100px;">
+                            <div style="color: var(--text-secondary); font-size: 10px;">Nenhuma conversa carregada.</div>
+                        </div>
+
+                        <div style="display: flex; gap: 4px; border-top: 1px solid var(--border-color); padding-top: 4px;">
+                            <button class="btn btn-accent btn-sm" style="flex: 1;" onclick="openPrivateChatU2()">🔒 Abrir DM c/ Gabriel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- U2 CHAT AREA -->
+                <div class="chat-section">
+                    <div class="chat-header">
+                        <span id="u2-chat-title">Chat: Nenhuma conversa</span>
+                        <span id="u2-chat-mode" class="tag-pill tag-dm">WebSocket STOMP</span>
+                    </div>
+
+                    <div class="chat-messages" id="u2-chat-msgs">
+                        <div style="text-align: center; color: var(--text-secondary); margin-top: 30px; font-size: 11px;">
+                            Faça login e selecione uma conversa para trocar mensagens em tempo real com o Gabriel.
+                        </div>
+                    </div>
+
+                    <div class="chat-bottom">
+                        <input type="text" id="u2-msg-input" placeholder="Mensagem do Davi..." onkeydown="if(event.key==='Enter') sendMsgU2()">
+                        <button class="btn btn-primary" onclick="sendMsgU2()">⚡ Enviar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================== NETWORK & REQUEST INSPECTOR ====================== -->
+    <div class="network-panel" id="network-panel">
+        <div class="net-header-bar" onclick="toggleNetworkPanel(event)">
+            <div class="net-header-left">
+                <span class="net-title">🛰️ Requests / Network Inspector</span>
+                <span class="net-pill net-pill-count" id="net-count-total">0 reqs</span>
+                <span class="net-pill net-pill-ok" id="net-count-ok">0 ok</span>
+                <span class="net-pill net-pill-err" id="net-count-err">0 err</span>
+                <span class="net-pill net-pill-ws" id="net-count-ws">0 ws</span>
+            </div>
+
+            <div class="net-ticker" id="net-ticker-text">Pronto para capturar requisições HTTP e eventos WebSocket...</div>
+
+            <div class="net-header-actions" onclick="event.stopPropagation()">
+                <input type="text" id="net-search" class="net-search-input" placeholder="🔍 Filtrar..." oninput="handleNetSearch(this.value)">
+                <button class="net-filter-btn active" id="filter-btn-all" onclick="setNetFilter('all')">Todos</button>
+                <button class="net-filter-btn" id="filter-btn-http" onclick="setNetFilter('http')">HTTP</button>
+                <button class="net-filter-btn" id="filter-btn-ws" onclick="setNetFilter('ws')">WS</button>
+                <button class="net-filter-btn" id="filter-btn-err" onclick="setNetFilter('err')">Erros</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearNetworkLogs()" title="Limpar logs">🧹 Limpar</button>
+                <button class="btn btn-secondary btn-sm" id="net-size-btn" onclick="toggleMaximizeNetwork()" title="Maximizar / Restaurar">🗖</button>
+                <button class="btn btn-secondary btn-sm" id="net-toggle-btn" onclick="toggleNetworkPanel()">🔽 Minimizar</button>
+            </div>
+        </div>
+
+        <div class="net-body-container" id="net-body">
+            <!-- LIST OF REQUESTS -->
+            <div class="net-list-pane">
+                <div class="net-list-scroll" id="net-list-items">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- DETAIL INSPECTOR -->
+            <div class="net-detail-pane" id="net-detail-pane">
+                <div class="net-detail-empty" id="net-empty-state">
+                    <span style="font-size: 28px;">🛰️</span>
+                    <div>Selecione uma request na lista à esquerda para inspecionar parâmetros, body e headers.</div>
+                </div>
+
+                <div id="net-detail-content-wrap" style="display: none; flex-direction: column; height: 100%;">
+                    <div class="net-detail-header">
+                        <div class="net-detail-title-box">
+                            <span class="badge-method badge-get" id="detail-badge-method">GET</span>
+                            <span class="badge-status s-2xx" id="detail-badge-status">200 OK</span>
+                            <span class="net-detail-url" id="detail-url">/path</span>
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <span class="net-pill net-pill-count" id="detail-duration">0ms</span>
+                            <span class="net-pill net-pill-count" id="detail-time">13:00:00</span>
+                            <button class="btn btn-secondary btn-sm" onclick="copyDetailCurl()">📋 Copiar cURL</button>
+                            <button class="btn btn-secondary btn-sm" onclick="copyDetailResponse()">📋 Copiar JSON</button>
+                        </div>
+                    </div>
+
+                    <div class="net-tabs-bar">
+                        <button class="net-tab-btn active" id="tab-btn-overview" onclick="switchDetailTab('overview')">Visão Geral</button>
+                        <button class="net-tab-btn" id="tab-btn-request" onclick="switchDetailTab('request')">Request Body & Headers</button>
+                        <button class="net-tab-btn" id="tab-btn-response" onclick="switchDetailTab('response')">Response Body</button>
+                        <button class="net-tab-btn" id="tab-btn-curl" onclick="switchDetailTab('curl')">cURL</button>
+                    </div>
+
+                    <div class="net-detail-content" id="detail-tab-pane">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin.includes(':8080') ? window.location.origin : 'http://localhost:8080';
+
+        // State for User 1 (Gabriel)
+        const u1 = {
+            id: '596df96a-7d7c-4efc-89ef-bade51334d72',
+            email: 'gabriel.teste@gmail.com',
+            pass: 'GabrielTeste!1',
+            name: 'Gabriel Mendes',
+            token: null,
+            stomp: null,
+            sub: null,
+            activeConv: null,
+            selectedGroupId: null
+        };
+
+        // State for User 2 (Davi)
+        const u2 = {
+            id: 'aabecd3e-26bc-4c20-8ee2-a905d7460169',
+            email: 'davi.teste@gmail.com',
+            pass: 'DaviTeste!1',
+            name: 'Davi Franco',
+            token: null,
+            stomp: null,
+            sub: null,
+            activeConv: null
+        };
+
+        // ================= NETWORK INSPECTOR ENGINE =================
+        const netState = {
+            logs: [],
+            counter: 0,
+            selectedId: null,
+            filter: 'all',
+            search: '',
+            activeTab: 'overview',
+            isCollapsed: false,
+            isMaximized: false
+        };
+
+        // Global Fetch Interceptor to capture all HTTP network calls
+        const originalFetch = window.fetch;
+        window.fetch = async function(input, init = {}) {
+            const method = (init.method || 'GET').toUpperCase();
+            let url = typeof input === 'string' ? input : (input.url || input.toString());
+            let path = url;
+            try {
+                const u = new URL(url, window.location.origin);
+                path = u.pathname + u.search;
+            } catch (e) {}
+
+            // Extract headers
+            let reqHeadersObj = {};
+            let authHeader = '';
+            if (init.headers) {
+                if (init.headers instanceof Headers) {
+                    init.headers.forEach((v, k) => { reqHeadersObj[k] = v; });
+                    authHeader = reqHeadersObj['authorization'] || reqHeadersObj['Authorization'] || '';
+                } else if (typeof init.headers === 'object') {
+                    reqHeadersObj = { ...init.headers };
+                    authHeader = reqHeadersObj['authorization'] || reqHeadersObj['Authorization'] || '';
+                }
+            }
+
+            let userTag = 'Sistema';
+            if (u1.token && authHeader.includes(u1.token)) userTag = 'Gabriel';
+            else if (u2.token && authHeader.includes(u2.token)) userTag = 'Davi';
+
+            // Parse body
+            let reqBodyParsed = null;
+            if (init.body) {
+                if (typeof init.body === 'string') {
+                    try { reqBodyParsed = JSON.parse(init.body); } catch(e) { reqBodyParsed = init.body; }
+                } else {
+                    reqBodyParsed = init.body;
+                }
+            }
+
+            const logEntry = {
+                id: ++netState.counter,
+                type: 'HTTP',
+                method: method,
+                url: url,
+                path: path,
+                status: 'PENDING',
+                statusText: 'Executando...',
+                duration: 0,
+                startTime: performance.now(),
+                timestamp: new Date().toLocaleTimeString(),
+                user: userTag,
+                requestHeaders: reqHeadersObj,
+                requestBody: reqBodyParsed,
+                responseHeaders: {},
+                responseBody: null,
+                error: null
+            };
+
+            netState.logs.unshift(logEntry);
+            if (!netState.selectedId) netState.selectedId = logEntry.id;
+            updateNetUI();
+
+            try {
+                const response = await originalFetch.apply(this, [input, init]);
+                const duration = Math.round(performance.now() - logEntry.startTime);
+                logEntry.duration = duration;
+                logEntry.status = response.status;
+                logEntry.statusText = response.statusText;
+
+                // Clone response to safely read text/json
+                try {
+                    const clone = response.clone();
+                    const text = await clone.text();
+                    try {
+                        logEntry.responseBody = JSON.parse(text);
+                    } catch(e) {
+                        logEntry.responseBody = text;
+                    }
+                } catch(e) {
+                    logEntry.responseBody = null;
+                }
+
+                // Headers
+                const resHeaders = {};
+                if (response.headers && response.headers.forEach) {
+                    response.headers.forEach((v, k) => { resHeaders[k] = v; });
+                }
+                logEntry.responseHeaders = resHeaders;
+
+                updateNetUI();
+                return response;
+            } catch (err) {
+                const duration = Math.round(performance.now() - logEntry.startTime);
+                logEntry.duration = duration;
+                logEntry.status = 'ERR';
+                logEntry.statusText = err.message || 'Fetch error';
+                logEntry.error = err.message;
+                updateNetUI();
+                throw err;
+            }
+        };
+
+        function logWsEvent(action, topic, payload, user = 'Sistema', status = 'OK') {
+            const logEntry = {
+                id: ++netState.counter,
+                type: 'WS',
+                method: `WS-${action}`,
+                url: `${API_BASE}/ws -> ${topic}`,
+                path: topic,
+                status: status,
+                statusText: action,
+                duration: 1,
+                startTime: performance.now(),
+                timestamp: new Date().toLocaleTimeString(),
+                user: user,
+                requestHeaders: { 'Transport': 'STOMP / SockJS' },
+                requestBody: payload,
+                responseHeaders: {},
+                responseBody: payload,
+                error: null
+            };
+
+            netState.logs.unshift(logEntry);
+            if (!netState.selectedId) netState.selectedId = logEntry.id;
+            updateNetUI();
+        }
+
+        function updateNetUI() {
+            // Update counters
+            const total = netState.logs.length;
+            const ok = netState.logs.filter(l => (typeof l.status === 'number' && l.status >= 200 && l.status < 300) || l.status === 'OK').length;
+            const err = netState.logs.filter(l => (typeof l.status === 'number' && l.status >= 400) || l.status === 'ERR').length;
+            const ws = netState.logs.filter(l => l.type === 'WS').length;
+
+            document.getElementById('net-count-total').innerText = `${total} reqs`;
+            document.getElementById('net-count-ok').innerText = `${ok} ok`;
+            document.getElementById('net-count-err').innerText = `${err} err`;
+            document.getElementById('net-count-ws').innerText = `${ws} ws`;
+            
+            const headerCount = document.getElementById('header-req-count');
+            if (headerCount) headerCount.innerText = total;
+
+            // Ticker text
+            if (netState.logs.length > 0) {
+                const latest = netState.logs[0];
+                const ticker = document.getElementById('net-ticker-text');
+                const st = latest.status === 'PENDING' ? '⏳ PENDING' : (latest.status + ' ' + (latest.statusText || ''));
+                ticker.innerText = `[${latest.user}] ${latest.method} ${latest.path} ➔ ${st} (${latest.duration}ms)`;
+            }
+
+            renderNetList();
+            renderNetDetail();
+        }
+
+        function renderNetList() {
+            const container = document.getElementById('net-list-items');
+            if (!container) return;
+
+            let filtered = netState.logs;
+
+            // Filter type
+            if (netState.filter === 'http') filtered = filtered.filter(l => l.type === 'HTTP');
+            else if (netState.filter === 'ws') filtered = filtered.filter(l => l.type === 'WS');
+            else if (netState.filter === 'err') filtered = filtered.filter(l => (typeof l.status === 'number' && l.status >= 400) || l.status === 'ERR');
+
+            // Search query
+            if (netState.search.trim()) {
+                const q = netState.search.toLowerCase().trim();
+                filtered = filtered.filter(l => 
+                    (l.path && l.path.toLowerCase().includes(q)) ||
+                    (l.method && l.method.toLowerCase().includes(q)) ||
+                    (l.user && l.user.toLowerCase().includes(q)) ||
+                    (String(l.status).toLowerCase().includes(q)) ||
+                    (l.requestBody && JSON.stringify(l.requestBody).toLowerCase().includes(q)) ||
+                    (l.responseBody && JSON.stringify(l.responseBody).toLowerCase().includes(q))
+                );
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div style="padding: 16px; color: var(--text-secondary); text-align: center; font-size: 11px;">Nenhuma request encontrada com o filtro atual.</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(log => {
+                const isSel = log.id === netState.selectedId;
+                
+                // Method styling
+                let methodClass = 'badge-get';
+                const m = log.method.toUpperCase();
+                if (m === 'POST') methodClass = 'badge-post';
+                else if (m === 'PUT' || m === 'PATCH') methodClass = 'badge-put';
+                else if (m === 'DELETE') methodClass = 'badge-delete';
+                else if (m.startsWith('WS')) methodClass = 'badge-ws';
+
+                // Status styling
+                let statusClass = 's-2xx';
+                let statusLabel = log.status;
+                if (log.status === 'PENDING') {
+                    statusClass = 's-pending';
+                    statusLabel = '⏳';
+                } else if (typeof log.status === 'number') {
+                    if (log.status >= 400 && log.status < 500) statusClass = 's-4xx';
+                    else if (log.status >= 500) statusClass = 's-5xx';
+                } else if (log.status === 'ERR') {
+                    statusClass = 's-5xx';
+                }
+
+                return `
+                    <div class="net-item-row ${isSel ? 'selected' : ''}" onclick="selectNetLog(${log.id})">
+                        <span class="badge-method ${methodClass}">${log.method}</span>
+                        <span class="badge-status ${statusClass}">${statusLabel}</span>
+                        <div class="net-item-path" title="${log.url}">
+                            ${log.path}
+                        </div>
+                        <div class="net-item-meta">
+                            <span>${log.duration}ms</span>
+                            <span class="net-item-user-tag">${log.user}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderNetDetail() {
+            const emptyState = document.getElementById('net-empty-state');
+            const wrap = document.getElementById('net-detail-content-wrap');
+            const pane = document.getElementById('detail-tab-pane');
+
+            const item = netState.logs.find(l => l.id === netState.selectedId);
+            if (!item) {
+                if (emptyState) emptyState.style.display = 'flex';
+                if (wrap) wrap.style.display = 'none';
+                return;
+            }
+
+            if (emptyState) emptyState.style.display = 'none';
+            if (wrap) wrap.style.display = 'flex';
+
+            // Detail Header
+            const bMethod = document.getElementById('detail-badge-method');
+            bMethod.innerText = item.method;
+            bMethod.className = `badge-method ${item.method === 'POST' ? 'badge-post' : item.method === 'DELETE' ? 'badge-delete' : item.method.startsWith('WS') ? 'badge-ws' : 'badge-get'}`;
+
+            const bStatus = document.getElementById('detail-badge-status');
+            bStatus.innerText = item.status === 'PENDING' ? '⏳ PENDING' : `${item.status} ${item.statusText || ''}`;
+            bStatus.className = `badge-status ${typeof item.status === 'number' && item.status >= 400 ? 's-4xx' : item.status === 'ERR' ? 's-5xx' : 's-2xx'}`;
+
+            document.getElementById('detail-url').innerText = item.url;
+            document.getElementById('detail-duration').innerText = `⏱️ ${item.duration}ms`;
+            document.getElementById('detail-time').innerText = `🕒 ${item.timestamp}`;
+
+            // Tab rendering
+            if (netState.activeTab === 'overview') {
+                pane.innerHTML = `
+                    <table class="key-val-table">
+                        <tr><td>URL Completa:</td><td><strong style="color:#38BDF8;">${escapeHtml(item.url)}</strong></td></tr>
+                        <tr><td>Método / Tipo:</td><td><strong>${item.method} (${item.type})</strong></td></tr>
+                        <tr><td>Status HTTP:</td><td>${item.status} - ${item.statusText || ''}</td></tr>
+                        <tr><td>Usuário Solicitante:</td><td><span class="tag-pill tag-group">${item.user}</span></td></tr>
+                        <tr><td>Duração / Latência:</td><td>${item.duration} ms</td></tr>
+                        <tr><td>Horário:</td><td>${item.timestamp}</td></tr>
+                        ${item.error ? `<tr><td style="color:var(--danger)">Erro:</td><td style="color:var(--danger)">${escapeHtml(item.error)}</td></tr>` : ''}
+                    </table>
+
+                    <div style="font-weight:700; font-size:11px; margin: 8px 0 4px 0; color:var(--primary);">Headers Principais:</div>
+                    <table class="key-val-table">
+                        ${Object.keys(item.requestHeaders).length === 0 ? '<tr><td colspan="2">Nenhum header capturado</td></tr>' : 
+                          Object.entries(item.requestHeaders).map(([k, v]) => `<tr><td>${escapeHtml(k)}:</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}
+                    </table>
+                `;
+            } else if (netState.activeTab === 'request') {
+                const reqJsonStr = item.requestBody ? JSON.stringify(item.requestBody, null, 2) : 'Nenhum corpo na requisição (GET / Vazio)';
+                pane.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                        <span style="font-weight:700; color:var(--primary);">Headers de Envio:</span>
+                    </div>
+                    <table class="key-val-table">
+                        ${Object.entries(item.requestHeaders).map(([k, v]) => `<tr><td>${escapeHtml(k)}:</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}
+                    </table>
+
+                    <div style="display:flex; justify-content:space-between; margin: 10px 0 6px 0;">
+                        <span style="font-weight:700; color:var(--primary);">Payload Enviado (Body):</span>
+                        <button class="btn btn-secondary btn-sm" onclick="copyText(${JSON.stringify(reqJsonStr)})">📋 Copiar Body</button>
+                    </div>
+                    <div class="code-block-viewer">${escapeHtml(reqJsonStr)}</div>
+                `;
+            } else if (netState.activeTab === 'response') {
+                const resJsonStr = item.responseBody !== null ? (typeof item.responseBody === 'object' ? JSON.stringify(item.responseBody, null, 2) : String(item.responseBody)) : (item.status === 'PENDING' ? '⏳ Aguardando resposta...' : 'Corpo de resposta vazio (204 No Content)');
+                pane.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                        <span style="font-weight:700; color:var(--primary);">Headers de Resposta:</span>
+                    </div>
+                    <table class="key-val-table">
+                        ${Object.keys(item.responseHeaders).length === 0 ? '<tr><td colspan="2">Nenhum header retornado</td></tr>' : 
+                          Object.entries(item.responseHeaders).map(([k, v]) => `<tr><td>${escapeHtml(k)}:</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}
+                    </table>
+
+                    <div style="display:flex; justify-content:space-between; margin: 10px 0 6px 0;">
+                        <span style="font-weight:700; color:var(--primary);">Resposta do Servidor (Response Body):</span>
+                        <button class="btn btn-secondary btn-sm" onclick="copyDetailResponse()">📋 Copiar JSON</button>
+                    </div>
+                    <div class="code-block-viewer">${escapeHtml(resJsonStr)}</div>
+                `;
+            } else if (netState.activeTab === 'curl') {
+                const curlCmd = buildCurl(item);
+                pane.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                        <span style="font-weight:700; color:var(--primary);">Comando cURL Equivalente:</span>
+                        <button class="btn btn-secondary btn-sm" onclick="copyDetailCurl()">📋 Copiar cURL</button>
+                    </div>
+                    <div class="code-block-viewer">${escapeHtml(curlCmd)}</div>
+                `;
+            }
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function buildCurl(item) {
+            if (item.type === 'WS') return `# Evento WebSocket STOMP (${item.method})\nDestination: ${item.path}\nPayload: ${JSON.stringify(item.requestBody, null, 2)}`;
+            let cmd = `curl -X ${item.method} '${item.url}'`;
+            if (item.requestHeaders) {
+                Object.entries(item.requestHeaders).forEach(([k, v]) => {
+                    cmd += ` \\\n  -H '${k}: ${v}'`;
+                });
+            }
+            if (item.requestBody) {
+                const bodyStr = typeof item.requestBody === 'object' ? JSON.stringify(item.requestBody) : item.requestBody;
+                cmd += ` \\\n  -d '${bodyStr.replace(/'/g, `'\\''`)}'`;
+            }
+            return cmd;
+        }
+
+        function selectNetLog(id) {
+            netState.selectedId = id;
+            updateNetUI();
+        }
+
+        function switchDetailTab(tab) {
+            netState.activeTab = tab;
+            ['overview', 'request', 'response', 'curl'].forEach(t => {
+                const b = document.getElementById(`tab-btn-${t}`);
+                if (b) b.className = `net-tab-btn ${t === tab ? 'active' : ''}`;
+            });
+            renderNetDetail();
+        }
+
+        function setNetFilter(f) {
+            netState.filter = f;
+            ['all', 'http', 'ws', 'err'].forEach(filt => {
+                const b = document.getElementById(`filter-btn-${filt}`);
+                if (b) b.className = `net-filter-btn ${filt === f ? 'active' : ''}`;
+            });
+            renderNetList();
+        }
+
+        function handleNetSearch(q) {
+            netState.search = q;
+            renderNetList();
+        }
+
+        function clearNetworkLogs() {
+            netState.logs = [];
+            netState.selectedId = null;
+            updateNetUI();
+        }
+
+        function toggleNetworkPanel(e) {
+            if (e && e.target && e.target.closest('.net-header-actions')) return;
+            const panel = document.getElementById('network-panel');
+            const toggleBtn = document.getElementById('net-toggle-btn');
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                panel.classList.add('expanded');
+                if (toggleBtn) toggleBtn.innerText = '🔽 Minimizar';
+                netState.isCollapsed = false;
+            } else {
+                panel.classList.remove('expanded', 'maximized');
+                panel.classList.add('collapsed');
+                if (toggleBtn) toggleBtn.innerText = '🔼 Expandir';
+                netState.isCollapsed = true;
+            }
+        }
+
+        function toggleMaximizeNetwork() {
+            const panel = document.getElementById('network-panel');
+            const btn = document.getElementById('net-size-btn');
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+            }
+            if (panel.classList.contains('maximized')) {
+                panel.classList.remove('maximized');
+                panel.classList.add('expanded');
+                if (btn) btn.innerText = '🗖';
+            } else {
+                panel.classList.remove('expanded');
+                panel.classList.add('maximized');
+                if (btn) btn.innerText = '🗗';
+            }
+        }
+
+        function copyText(txt) {
+            navigator.clipboard.writeText(txt);
+            alert('Copiado para a área de transferência!');
+        }
+
+        function copyDetailCurl() {
+            const item = netState.logs.find(l => l.id === netState.selectedId);
+            if (item) copyText(buildCurl(item));
+        }
+
+        function copyDetailResponse() {
+            const item = netState.logs.find(l => l.id === netState.selectedId);
+            if (item) {
+                const str = typeof item.responseBody === 'object' ? JSON.stringify(item.responseBody, null, 2) : String(item.responseBody || '');
+                copyText(str);
+            }
+        }
+
+        // Helper API caller
+        async function api(path, method = 'GET', body = null, token = null) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`${API_BASE}${path}`, {
+                method,
+                headers,
+                body: body ? JSON.stringify(body) : null
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const msg = data.displayMessage || data.message || `Erro ${res.status}`;
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        function copyUId(userKey) {
+            const id = userKey === 'u1' ? u1.id : u2.id;
+            navigator.clipboard.writeText(id);
+            alert(`UUID copiado: ${id}`);
+        }
+
+        // ================= GABRIEL (U1) =================
+        async function loginU1() {
+            try {
+                // Register if not exists
+                try {
+                    await api('/auth/register', 'POST', {
+                        name: u1.name,
+                        email: u1.email,
+                        rawPassword: u1.pass,
+                        birthDate: '12/04/2000'
+                    });
+                } catch(e) {}
+
+                const data = await api('/auth/login', 'POST', {
+                    email: u1.email,
+                    rawPassword: u1.pass
+                });
+
+                u1.token = data.accessToken;
+                const profile = await api('/profile', 'GET', null, u1.token);
+                u1.id = profile.id;
+                document.getElementById('u1-uid-text').innerText = `ID: ${u1.id}`;
+
+                connectWs(u1, 'u1-ws-dot', () => {
+                    loadGroupsU1();
+                    loadConversationsU1();
+                });
+            } catch (err) {
+                alert(`Erro login Gabriel: ${err.message}`);
+            }
+        }
+
+        async function createGroupU1() {
+            const name = document.getElementById('u1-group-name').value.trim();
+            if (!name || !u1.token) return alert('Faça login primeiro');
+            try {
+                const res = await api('/groups', 'POST', { name }, u1.token);
+                u1.selectedGroupId = res.id;
+                await loadGroupsU1();
+                alert(`Grupo "${res.name}" criado com sucesso!`);
+            } catch (err) {
+                alert(`Erro ao criar grupo: ${err.message}`);
+            }
+        }
+
+        async function loadGroupsU1() {
+            if (!u1.token) return;
+            const list = document.getElementById('u1-groups-list');
+            try {
+                const groups = await api('/groups', 'GET', null, u1.token);
+                list.innerHTML = '';
+                if (groups.length === 0) {
+                    list.innerHTML = '<div style="color: var(--text-secondary); font-size: 10px;">Nenhum grupo criado.</div>';
+                    return;
+                }
+                groups.forEach(g => {
+                    if (!u1.selectedGroupId) u1.selectedGroupId = g.id;
+                    const row = document.createElement('div');
+                    row.className = `list-row ${u1.selectedGroupId === g.id ? 'active' : ''}`;
+                    row.onclick = () => {
+                        u1.selectedGroupId = g.id;
+                        loadGroupsU1();
+                    };
+                    row.innerHTML = `
+                        <span><strong>${g.name}</strong></span>
+                        <span class="tag-pill tag-group">${g.members ? g.members.length : g.membersCount} memb.</span>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (err) {
+                list.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
+            }
+        }
+
+        async function inviteMemberU1() {
+            if (!u1.token || !u1.selectedGroupId) return alert('Faça login com Gabriel e selecione/crie um grupo primeiro');
+            
+            // If Davi is not logged in or still has dummy ID, ensure Davi is registered/logged in first
+            if (!u2.token || u2.id === 'aabecd3e-26bc-4c20-8ee2-a905d7460169') {
+                try {
+                    await loginU2();
+                } catch(e) {}
+            }
+
+            let targetId = document.getElementById('u1-invite-uid').value.trim();
+            if (!targetId || targetId === 'aabecd3e-26bc-4c20-8ee2-a905d7460169') {
+                targetId = u2.id;
+                document.getElementById('u1-invite-uid').value = targetId;
+            }
+
+            try {
+                await api(`/groups/${u1.selectedGroupId}/members`, 'POST', { userId: targetId }, u1.token);
+                await loadGroupsU1();
+                if (u2.token) await loadGroupsU2();
+                alert('Davi foi adicionado com sucesso ao grupo de pessoas!');
+            } catch (err) {
+                alert(`Erro ao convidar: ${err.message}`);
+            }
+        }
+
+        async function loadConversationsU1() {
+            if (!u1.token) return;
+            const list = document.getElementById('u1-convs-list');
+            try {
+                const convs = await api('/conversations', 'GET', null, u1.token);
+                list.innerHTML = '';
+                if (convs.length === 0) {
+                    list.innerHTML = '<div style="color: var(--text-secondary); font-size: 10px;">Nenhuma conversa.</div>';
+                    return;
+                }
+                convs.forEach(c => {
+                    const row = document.createElement('div');
+                    row.className = `list-row ${u1.activeConv && u1.activeConv.id === c.id ? 'active' : ''}`;
+                    row.onclick = () => selectConvU1(c);
+                    const title = c.conversationType === 'GROUP' ? `👥 ${c.name}` : `🔒 DM Privada`;
+                    row.innerHTML = `
+                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">
+                            <strong>${title}</strong>
+                        </div>
+                        <span class="tag-pill ${c.conversationType === 'GROUP' ? 'tag-group' : 'tag-dm'}">${c.conversationType}</span>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (err) {
+                list.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
+            }
+        }
+
+        async function openPrivateChatU1() {
+            if (!u1.token) return alert('Faça login primeiro');
+            if (!u2.token || u2.id === 'aabecd3e-26bc-4c20-8ee2-a905d7460169') {
+                try { await loginU2(); } catch(e) {}
+            }
+            try {
+                const conv = await api('/conversations/private', 'POST', { targetUserId: u2.id }, u1.token);
+                await loadConversationsU1();
+                if (u2.token) await loadConversationsU2();
+                selectConvU1(conv);
+            } catch (err) {
+                alert(`Bloqueio de Privacidade: ${err.message}`);
+            }
+        }
+
+        function selectConvU1(c) {
+            u1.activeConv = c;
+            document.getElementById('u1-chat-title').innerText = `${c.conversationType === 'GROUP' ? '👥 ' + c.name : '🔒 DM c/ Davi'} [${c.id.substring(0,8)}...]`;
+            loadConversationsU1();
+            subscribeConv(u1, c.id, 'u1-chat-msgs');
+            loadMsgs(u1, c.id, 'u1-chat-msgs');
+        }
+
+        function sendMsgU1() {
+            const input = document.getElementById('u1-msg-input');
+            const content = input.value.trim();
+            if (!content || !u1.activeConv) return;
+            sendWsMsg(u1, u1.activeConv.id, content);
+            input.value = '';
+        }
+
+        // ================= DAVI (U2) =================
+        async function loginU2() {
+            try {
+                try {
+                    await api('/auth/register', 'POST', {
+                        name: u2.name,
+                        email: u2.email,
+                        rawPassword: u2.pass,
+                        birthDate: '06/07/2000'
+                    });
+                } catch(e) {}
+
+                const data = await api('/auth/login', 'POST', {
+                    email: u2.email,
+                    rawPassword: u2.pass
+                });
+
+                u2.token = data.accessToken;
+                const profile = await api('/profile', 'GET', null, u2.token);
+                u2.id = profile.id;
+                document.getElementById('u2-uid-text').innerText = `ID: ${u2.id}`;
+                const inviteInput = document.getElementById('u1-invite-uid');
+                if (inviteInput) inviteInput.value = u2.id;
+
+                connectWs(u2, 'u2-ws-dot', () => {
+                    loadGroupsU2();
+                    loadConversationsU2();
+                });
+            } catch (err) {
+                alert(`Erro login Davi: ${err.message}`);
+            }
+        }
+
+        async function loadGroupsU2() {
+            if (!u2.token) return;
+            const list = document.getElementById('u2-groups-list');
+            try {
+                const groups = await api('/groups', 'GET', null, u2.token);
+                list.innerHTML = '';
+                if (groups.length === 0) {
+                    list.innerHTML = '<div style="color: var(--text-secondary); font-size: 10px;">Nenhum grupo compartilhado.</div>';
+                    return;
+                }
+                groups.forEach(g => {
+                    const row = document.createElement('div');
+                    row.className = 'list-row';
+                    row.innerHTML = `
+                        <span><strong>${g.name}</strong></span>
+                        <span class="tag-pill tag-group">${g.members ? g.members.length : g.membersCount} memb.</span>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (err) {
+                list.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
+            }
+        }
+
+        async function loadConversationsU2() {
+            if (!u2.token) return;
+            const list = document.getElementById('u2-convs-list');
+            try {
+                const convs = await api('/conversations', 'GET', null, u2.token);
+                list.innerHTML = '';
+                if (convs.length === 0) {
+                    list.innerHTML = '<div style="color: var(--text-secondary); font-size: 10px;">Nenhuma conversa.</div>';
+                    return;
+                }
+                convs.forEach(c => {
+                    const row = document.createElement('div');
+                    row.className = `list-row ${u2.activeConv && u2.activeConv.id === c.id ? 'active' : ''}`;
+                    row.onclick = () => selectConvU2(c);
+                    const title = c.conversationType === 'GROUP' ? `👥 ${c.name}` : `🔒 DM Privada`;
+                    row.innerHTML = `
+                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">
+                            <strong>${title}</strong>
+                        </div>
+                        <span class="tag-pill ${c.conversationType === 'GROUP' ? 'tag-group' : 'tag-dm'}">${c.conversationType}</span>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (err) {
+                list.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
+            }
+        }
+
+        async function openPrivateChatU2() {
+            if (!u2.token) return alert('Faça login primeiro');
+            if (!u1.token || u1.id === '596df96a-7d7c-4efc-89ef-bade51334d72') {
+                try { await loginU1(); } catch(e) {}
+            }
+            try {
+                const conv = await api('/conversations/private', 'POST', { targetUserId: u1.id }, u2.token);
+                await loadConversationsU2();
+                if (u1.token) await loadConversationsU1();
+                selectConvU2(conv);
+            } catch (err) {
+                alert(`Bloqueio de Privacidade: ${err.message}`);
+            }
+        }
+
+        function selectConvU2(c) {
+            u2.activeConv = c;
+            document.getElementById('u2-chat-title').innerText = `${c.conversationType === 'GROUP' ? '👥 ' + c.name : '🔒 DM c/ Gabriel'} [${c.id.substring(0,8)}...]`;
+            loadConversationsU2();
+            subscribeConv(u2, c.id, 'u2-chat-msgs');
+            loadMsgs(u2, c.id, 'u2-chat-msgs');
+        }
+
+        function sendMsgU2() {
+            const input = document.getElementById('u2-msg-input');
+            const content = input.value.trim();
+            if (!content || !u2.activeConv) return;
+            sendWsMsg(u2, u2.activeConv.id, content);
+            input.value = '';
+        }
+
+        // ================= WEBSOCKET COMMON =================
+        function connectWs(userObj, dotId, onConnect) {
+            if (!userObj.token) return;
+            logWsEvent('CONNECT', '/ws', { token: 'Bearer ' + userObj.token.substring(0, 16) + '...' }, userObj.name);
+            const socket = new SockJS(`${API_BASE}/ws`);
+            userObj.stomp = Stomp.over(socket);
+            userObj.stomp.debug = () => {};
+
+            userObj.stomp.connect({ 'Authorization': `Bearer ${userObj.token}` }, () => {
+                document.getElementById(dotId).classList.add('active');
+                logWsEvent('CONNECTED', '/ws', { status: 'Conectado com sucesso' }, userObj.name, 'OK');
+                if (onConnect) onConnect();
+            }, (err) => {
+                document.getElementById(dotId).classList.remove('active');
+                logWsEvent('DISCONNECT', '/ws', { error: err }, userObj.name, 'ERR');
+            });
+        }
+
+        function subscribeConv(userObj, conversationId, containerId) {
+            if (!userObj.stomp || !userObj.stomp.connected) return;
+            if (userObj.sub) userObj.sub.unsubscribe();
+
+            const topic = `/topic/conversations.${conversationId}`;
+            logWsEvent('SUBSCRIBE', topic, { conversationId }, userObj.name);
+
+            userObj.sub = userObj.stomp.subscribe(topic, (message) => {
+                const msg = JSON.parse(message.body);
+                logWsEvent('RECEIVE', topic, msg, userObj.name);
+                appendBubble(containerId, msg, userObj.id);
+            });
+        }
+
+        function sendWsMsg(userObj, conversationId, content) {
+            if (!userObj.stomp || !userObj.stomp.connected) return;
+            const payload = {
+                conversationId: conversationId,
+                messageType: 'TEXT',
+                content: content
+            };
+            logWsEvent('SEND', '/app/chat.send', payload, userObj.name);
+            userObj.stomp.send('/app/chat.send', {}, JSON.stringify(payload));
+        }
+
+        async function loadMsgs(userObj, conversationId, containerId) {
+            try {
+                const data = await api(`/conversations/${conversationId}/messages?page=0&size=50`, 'GET', null, userObj.token);
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                const msgs = (data.content || []).reverse();
+                msgs.forEach(m => appendBubble(containerId, m, userObj.id));
+            } catch(e) {}
+        }
+
+        function appendBubble(containerId, msg, myUserId) {
+            const container = document.getElementById(containerId);
+            const isMe = msg.senderId === myUserId;
+
+            const bubble = document.createElement('div');
+            bubble.className = `message-bubble ${isMe ? 'msg-out' : 'msg-in'}`;
+            const time = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+            bubble.innerHTML = `
+                ${!isMe ? `<span class="msg-sender">${msg.senderName}</span>` : ''}
+                <div>${msg.content}</div>
+                <span class="msg-time">${time}</span>
+            `;
+
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ================= 1-CLICK COMPLETE SETUP =================
+        async function autoSetupAll() {
+            try {
+                // 1. Logar Gabriel
+                await loginU1();
+                // 2. Logar Davi
+                await loginU2();
+                // 3. Criar Grupo Gabriel
+                const group = await api('/groups', 'POST', { name: 'Família Mendes & Franco' }, u1.token);
+                u1.selectedGroupId = group.id;
+                // 4. Adicionar Davi ao grupo
+                await api(`/groups/${group.id}/members`, 'POST', { userId: u2.id }, u1.token);
+                await loadGroupsU1();
+                await loadGroupsU2();
+                // 5. Abrir DM 1x1
+                const conv = await api('/conversations/private', 'POST', { targetUserId: u2.id }, u1.token);
+                selectConvU1(conv);
+                selectConvU2(conv);
+                // 6. Enviar mensagem de boas-vindas
+                setTimeout(() => {
+                    sendWsMsg(u1, conv.id, 'Fala Davi! Testando nosso chat em tempo real com WebSocket 🚀');
+                }, 500);
+            } catch (err) {
+                alert(`Erro no setup automático: ${err.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
