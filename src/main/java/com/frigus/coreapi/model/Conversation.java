@@ -2,6 +2,7 @@ package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.ConversationType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
@@ -43,5 +44,8 @@ public class Conversation {
     @Column(name = "created_at")
     private Instant createdAt;
 
-
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 }

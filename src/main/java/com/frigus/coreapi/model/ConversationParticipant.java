@@ -40,5 +40,8 @@ public class ConversationParticipant {
     @Column(name = "left_at")
     private Instant leftAt;
 
-
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 }
