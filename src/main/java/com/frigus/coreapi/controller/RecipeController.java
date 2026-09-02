@@ -28,8 +28,9 @@ public class RecipeController extends BaseController<Recipe, Integer, RecipeRequ
         return service.update(id, dto);
     }
 
+    @Override
     @DeleteMapping("/{id}")
-    public void deleteRecipe(@PathVariable Integer id) {
+    public void delete(@PathVariable Integer id) {
         service.deleteRecipe(id);
     }
 }
