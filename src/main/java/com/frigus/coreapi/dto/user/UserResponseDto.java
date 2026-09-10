@@ -1,5 +1,6 @@
 package com.frigus.coreapi.dto.user;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.frigus.coreapi.enums.AccountType;
 import lombok.*;
 
@@ -16,5 +17,7 @@ public class UserResponseDto {
     private String name;
     private String email;
     private AccountType accountType;
+
+    @JsonFormat(pattern = "dd/MM/yyyy")
     private LocalDate birthDate;
 }

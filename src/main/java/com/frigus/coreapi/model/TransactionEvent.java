@@ -8,6 +8,9 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
+
 import java.time.Instant;
 
 @Getter
@@ -31,6 +34,7 @@ public class TransactionEvent {
 
     @Column(name = "status", columnDefinition = "transaction_status_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private TransactionStatus status;
 
     @Column(name = "message", length = Integer.MAX_VALUE)

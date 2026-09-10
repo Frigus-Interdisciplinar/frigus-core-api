@@ -75,6 +75,8 @@ DROP TYPE IF EXISTS account_type_enum CASCADE;
 
 DROP TYPE IF EXISTS billing_interval_enum CASCADE;
 
+DROP TYPE IF EXISTS user_role_enum CASCADE;
+
 DROP TYPE IF EXISTS payment_method_enum CASCADE;
 
 DROP TYPE IF EXISTS subscription_status_enum CASCADE;
@@ -94,6 +96,8 @@ CREATE TYPE unit_of_measure_enum AS ENUM(
 );
 
 CREATE TYPE account_type_enum AS ENUM('DOMESTIC', 'BUSINESS', 'COMMERCIAL');
+
+CREATE TYPE user_role_enum AS ENUM('USER', 'ADMIN');
 
 CREATE TYPE category_enum AS ENUM(
   'FRUIT',
@@ -169,6 +173,7 @@ CREATE TABLE users (
   name VARCHAR NOT NULL,
   birth_date DATE,
   account_type account_type_enum NOT NULL,
+  role user_role_enum NOT NULL DEFAULT 'USER',
   email VARCHAR NOT NULL,
   hash_password VARCHAR NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -391,6 +396,7 @@ CREATE TABLE requests (
 
 CREATE TABLE plans (
   id SERIAL PRIMARY KEY,
+  plan_code VARCHAR(20) NOT NULL,
   name VARCHAR NOT NULL,
   description TEXT,
   price NUMERIC(10, 2) NOT NULL DEFAULT 0,
@@ -418,8 +424,9 @@ CREATE TABLE subscriptions (
 
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  idempotency_key VARCHAR(120) NOT NULL,
   user_id UUID NOT NULL,
-  subscription_id UUID NOT NULL,
+  subscription_id UUID,
   plan_id INTEGER NOT NULL,
   amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
   payment_method payment_method_enum NOT NULL,
@@ -436,6 +443,7 @@ CREATE TABLE transactions (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_transactions_user_id_users FOREIGN KEY (user_id) REFERENCES users (id),
   CONSTRAINT fk_transactions_subscription_id_subscriptions FOREIGN KEY (subscription_id) REFERENCES subscriptions (id) ON DELETE CASCADE,
+  CONSTRAINT uq_transactions_idempotency_key UNIQUE (idempotency_key),
   CONSTRAINT fk_transactions_plan_id_plans FOREIGN KEY (plan_id) REFERENCES plans (id),
   CONSTRAINT chk_transactions_processed_at CHECK (
     (
@@ -555,6 +563,10 @@ CREATE UNIQUE INDEX uq_plans_name_active ON plans (name)
 WHERE
   deleted_at IS NULL;
 
+CREATE UNIQUE INDEX uq_plans_code_active ON plans (plan_code)
+WHERE
+  deleted_at IS NULL;
+
 CREATE INDEX idx_plans_deleted_at ON plans (deleted_at);
 
 CREATE INDEX idx_groups_deleted_at ON groups (deleted_at);
@@ -615,6 +627,7 @@ EXECUTE FUNCTION fn_log_transaction_status_change ();
 -- ============================================================
 INSERT INTO
   plans (
+    plan_code,
     name,
     description,
     price,
@@ -623,6 +636,7 @@ INSERT INTO
   )
 VALUES
   (
+    'FREE',
     'Frigus Free',
     'Plano gratuito com funcionalidades básicas de controle de estoque.',
     0.00,
@@ -630,13 +644,23 @@ VALUES
     TRUE
   ),
   (
-    'Frigus Família',
+    'PLUS',
+    'Frigus Plus',
     'Plano para uso doméstico compartilhado entre membros da família.',
     29.99,
     'MONTHLY',
     TRUE
   ),
   (
+    'FAMILY',
+    'Frigus Família',
+    'Plano compartilhado para famílias maiores.',
+    49.99,
+    'MONTHLY',
+    TRUE
+  ),
+  (
+    'COMMERCIAL',
     'Frigus Comercial',
     'Plano para pequenos comércios com múltiplos estoques.',
     119.99,
@@ -644,9 +668,205 @@ VALUES
     TRUE
   ),
   (
+    'ENTERPRISE',
     'Frigus Empresarial',
     'Plano para empresas com necessidades avançadas de gestão.',
     159.99,
     'MONTHLY',
     TRUE
   );
+
+-- ============================================================
+-- PRODUCT & STOCK FUNCTIONS & TRIGGERS
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION fn_compute_product_status_enum(
+    p_expire_date DATE,
+    p_warn_days   INTEGER DEFAULT 3
+) RETURNS product_status_enum
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE
+        WHEN p_expire_date < CURRENT_DATE THEN 'EXPIRED'::product_status_enum
+        WHEN p_expire_date <= CURRENT_DATE + p_warn_days THEN 'NEAR_EXPIRATION'::product_status_enum
+        ELSE 'FRESH'::product_status_enum
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_compute_product_status(
+    p_expire_date DATE,
+    p_warn_days   INTEGER DEFAULT 3
+) RETURNS VARCHAR
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE fn_compute_product_status_enum(p_expire_date, p_warn_days)
+        WHEN 'EXPIRED'::product_status_enum         THEN 'Vencido'
+        WHEN 'NEAR_EXPIRATION'::product_status_enum THEN 'Próximo do vencimento'
+        WHEN 'FRESH'::product_status_enum           THEN 'Fresco'
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION trg_fn_stock_products_set_status()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.product_status := fn_compute_product_status_enum(NEW.expire_date);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_stock_products_set_status ON stock_products;
+CREATE TRIGGER trg_stock_products_set_status
+    BEFORE INSERT OR UPDATE OF expire_date ON stock_products
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_stock_products_set_status();
+
+CREATE OR REPLACE FUNCTION trg_fn_stock_movements_apply()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_delta        INTEGER;
+    v_new_quantity INTEGER;
+BEGIN
+    v_delta := CASE NEW.movement_type
+        WHEN 'IN'  THEN NEW.quantity
+        WHEN 'OUT' THEN -NEW.quantity
+        ELSE NEW.quantity
+    END;
+
+    UPDATE stock_products
+       SET quantity = quantity + v_delta
+     WHERE id = NEW.stock_product_id
+     RETURNING quantity INTO v_new_quantity;
+
+    IF v_new_quantity < 0 THEN
+        RAISE EXCEPTION 'stock_movements: quantidade resultante negativa para stock_product_id %', NEW.stock_product_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_stock_movements_apply ON stock_movements;
+CREATE TRIGGER trg_stock_movements_apply
+    AFTER INSERT ON stock_movements
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_stock_movements_apply();
+
+CREATE OR REPLACE FUNCTION fn_low_stock_products(p_stock_id INTEGER)
+RETURNS TABLE (
+    stock_product_id INTEGER,
+    product_id       INTEGER,
+    product_name     VARCHAR,
+    quantity         INTEGER,
+    minimal_quantity INTEGER
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT sp.id, sp.product_id, p.name, sp.quantity, sp.minimal_quantity
+    FROM stock_products sp
+    JOIN products p ON p.id = sp.product_id
+    WHERE sp.stock_id = p_stock_id
+      AND sp.minimal_quantity IS NOT NULL
+      AND sp.quantity < sp.minimal_quantity;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_suggest_recipes(p_stock_id INTEGER)
+RETURNS TABLE (
+    recipe_id           INTEGER,
+    matched_ingredients  INTEGER,
+    missing_ingredients  INTEGER,
+    nearest_expire_date  DATE,
+    score                NUMERIC
+)
+LANGUAGE sql
+STABLE
+AS $$
+    WITH ingredient_match AS (
+        SELECT
+            ri.recipe_id,
+            ri.product_id,
+            bool_or(sp.id IS NOT NULL)  AS in_stock,
+            MIN(sp.expire_date)          AS earliest_expire_date
+        FROM recipe_ingredients ri
+        LEFT JOIN stock_products sp
+            ON sp.product_id = ri.product_id
+           AND sp.stock_id = p_stock_id
+        GROUP BY ri.recipe_id, ri.product_id
+    )
+    SELECT
+        recipe_id,
+        COUNT(*) FILTER (WHERE in_stock)::INTEGER      AS matched_ingredients,
+        COUNT(*) FILTER (WHERE NOT in_stock)::INTEGER  AS missing_ingredients,
+        MIN(earliest_expire_date)                       AS nearest_expire_date,
+        ROUND(COUNT(*) FILTER (WHERE in_stock)::NUMERIC / NULLIF(COUNT(*), 0), 2) AS score
+    FROM ingredient_match
+    GROUP BY recipe_id;
+$$;
+
+-- ============================================================
+-- CONVERSATION & SHOPPING LIST FUNCTIONS & PROCEDURES
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION fn_pair_key(p_user_a UUID, p_user_b UUID)
+RETURNS VARCHAR
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT LEAST(p_user_a::TEXT, p_user_b::TEXT) || ':' || GREATEST(p_user_a::TEXT, p_user_b::TEXT);
+$$;
+
+CREATE OR REPLACE FUNCTION trg_fn_conversation_participants_pair_key()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_conversation_type conversation_type_enum;
+    v_participants       UUID[];
+BEGIN
+    SELECT conversation_type INTO v_conversation_type
+    FROM conversations
+    WHERE id = NEW.conversation_id;
+
+    IF v_conversation_type = 'PRIVATE' THEN
+        SELECT array_agg(user_id ORDER BY user_id) INTO v_participants
+        FROM conversation_participants
+        WHERE conversation_id = NEW.conversation_id;
+
+        IF array_length(v_participants, 1) = 2 THEN
+            UPDATE conversations
+               SET pair_key = fn_pair_key(v_participants[1], v_participants[2])
+             WHERE id = NEW.conversation_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_conversation_participants_pair_key ON conversation_participants;
+CREATE TRIGGER trg_conversation_participants_pair_key
+    AFTER INSERT ON conversation_participants
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_conversation_participants_pair_key();
+
+CREATE OR REPLACE PROCEDURE sp_close_shopping_list(p_list_id UUID)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM shopping_list_products
+        WHERE list_id = p_list_id
+          AND status NOT IN ('PURCHASED', 'REMOVED')
+    ) THEN
+        UPDATE shopping_lists
+           SET status = 'COMPLETED'
+         WHERE id = p_list_id;
+    END IF;
+END;
+$$;

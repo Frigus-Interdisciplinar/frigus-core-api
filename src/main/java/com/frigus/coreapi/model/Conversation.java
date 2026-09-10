@@ -2,6 +2,7 @@ package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.ConversationType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
@@ -19,6 +20,7 @@ import java.util.UUID;
 @Table(name = "conversations")
 public class Conversation {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @ColumnDefault("gen_random_uuid()")
     @Column(name = "id", nullable = false)
     private UUID id;
@@ -42,5 +44,8 @@ public class Conversation {
     @Column(name = "created_at")
     private Instant createdAt;
 
-
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 }

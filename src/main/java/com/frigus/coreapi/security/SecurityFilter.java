@@ -42,7 +42,8 @@ public class SecurityFilter extends OncePerRequestFilter {
 
                 if (user != null) {
                     var authorities = List.of(
-                        new SimpleGrantedAuthority("ROLE_PLAN_" + switchPlanName(planName))
+                        new SimpleGrantedAuthority("ROLE_" + user.getRole().name()),
+                        new SimpleGrantedAuthority("PLAN_" + switchPlanName(planName))
                     );
 
                     var authentication = new UsernamePasswordAuthenticationToken(user, null, authorities);

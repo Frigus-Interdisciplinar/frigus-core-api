@@ -5,8 +5,10 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -20,6 +22,7 @@ import java.util.UUID;
 @Table(name = "subscriptions")
 public class Subscription {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @ColumnDefault("gen_random_uuid()")
     @Column(name = "id", nullable = false)
     private UUID id;
@@ -38,6 +41,7 @@ public class Subscription {
     @ColumnDefault("'TRIAL'")
     @Column(name = "status", columnDefinition = "subscription_status_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private SubscriptionStatus status;
 
     @NotNull
@@ -56,5 +60,32 @@ public class Subscription {
     @Column(name = "canceled_at")
     private Instant canceledAt;
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (startedAt == null) {
+            startedAt = Instant.now();
+        }
+        if (currentPeriodStart == null) {
+            currentPeriodStart = Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+        if (status == null) {
+            status = SubscriptionStatus.TRIAL;
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }

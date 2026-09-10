@@ -5,6 +5,7 @@ import com.frigus.coreapi.dto.user.LoginResponseDto;
 import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
 import com.frigus.coreapi.dto.user.UserResponseDto;
 import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.UnauthorizedException;
 import com.frigus.coreapi.mapper.UserMapper;
@@ -14,6 +15,8 @@ import com.frigus.coreapi.security.TokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -42,6 +45,8 @@ public class AuthService {
                 .birthDate(body.getBirthDate())
                 .name(body.getName())
                 .accountType(AccountType.DOMESTIC)
+                .role(Role.USER)
+                .createdAt(Instant.now())
                 .build();
         user = userRepository.save(user);
 
