@@ -42,6 +42,9 @@ public class StockMovement {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
+    @Transient
+    private Integer balanceAfter;
+
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "date")
     private Instant date;

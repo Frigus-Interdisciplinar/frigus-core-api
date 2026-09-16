@@ -478,6 +478,8 @@ CREATE INDEX idx_products_category ON products (category);
 
 CREATE INDEX idx_products_storage_place ON products (storage_place);
 
+CREATE UNIQUE INDEX uq_products_name_ci ON products (LOWER(name));
+
 CREATE INDEX idx_stock_products_product ON stock_products (product_id);
 
 CREATE INDEX idx_stock_products_stock ON stock_products (stock_id);
