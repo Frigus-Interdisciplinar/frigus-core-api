@@ -1,6 +1,5 @@
 package com.frigus.coreapi.dto.ingredient;
 
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,11 +14,7 @@ import java.math.BigDecimal;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class IngredientRequestDto {
-    @NotNull(message = "O ID da receita é obrigatório")
-    private Integer recipeId;
-
-    @NotNull(message = "O ID do produto é obrigatório")
+public class IngredientUpdateRequestDto {
     private Integer productId;
 
     @Positive(message = "A quantidade deve ser maior que zero")
@@ -27,6 +22,5 @@ public class IngredientRequestDto {
 
     private String unit;
 
-    @Builder.Default
-    private Boolean required = true;
+    private Boolean required;
 }
