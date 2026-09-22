@@ -95,10 +95,16 @@ public class GroupService {
                     "Usuários no plano gratuito não podem criar grupos próprios. Assine um plano para criar seu grupo.");
         }
 
-        // 2. Validar se o usuário já possui 1 grupo ativo criado
+        // 2. Validar se o usuário já participa de algum grupo ativo
+        if (userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(currentUser.getId())) {
+            throw new ConflictException("Usuário já pertence a um grupo",
+                    "Você já faz parte de um grupo ativo. Saia do seu grupo atual antes de criar um novo.");
+        }
+
+        // 3. Validar se o usuário já possui 1 grupo ativo criado
         if (groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())) {
             throw new ConflictException("Limite de grupos atingido",
-                    "Você já possui um grupo ativo criado. O plano permite criar no máximo 1 grupo.");
+                    "Você já possui um grupo ativo criado. Cada usuário só pode criar 1 grupo.");
         }
 
         // 3. Criar grupo vinculando o proprietário
@@ -203,6 +209,12 @@ public class GroupService {
             throw new ConflictException("Usuário já é membro", "O usuário já faz parte deste grupo de pessoas");
         }
 
+        // Regra: 1 pessoa só pode fazer parte de um grupo por vez
+        if (userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(targetUser.getId())) {
+            throw new ConflictException("Usuário já pertence a um grupo",
+                    "O usuário já faz parte de outro grupo ativo. Cada usuário só pode pertencer a 1 grupo por vez.");
+        }
+
         // Validação de limite de membros baseada no plano do proprietário do grupo
         UUID ownerId = group.getOwner() != null ? group.getOwner().getId() : currentUser.getId();
         PlanLimitsDto limits = planLimitsResolverService.getLimitsForUser(ownerId);
@@ -249,6 +261,12 @@ public class GroupService {
     }
 
     @Transactional
+    public void leaveGroup(UUID groupId) {
+        User currentUser = requireCurrentUser();
+        removeMember(groupId, currentUser.getId());
+    }
+
+    @Transactional
     public void removeMember(UUID groupId, UUID targetUserId) {
         User currentUser = requireCurrentUser();
         validateUserInGroup(currentUser.getId(), groupId);
@@ -260,9 +278,45 @@ public class GroupService {
             throw new NotFoundException("Membro não encontrado", "O usuário não pertence a este grupo");
         }
 
-        if (group.getOwner() != null && group.getOwner().getId().equals(targetUserId)) {
-            throw new BadRequestException("Operação inválida",
-                    "O proprietário do grupo não pode ser removido do próprio grupo. Para encerrar o grupo, utilize a exclusão.");
+        boolean isTargetOwner = group.getOwner() != null && group.getOwner().getId().equals(targetUserId);
+        boolean isSelf = currentUser.getId().equals(targetUserId);
+        boolean isCurrentOwner = group.getOwner() != null && group.getOwner().getId().equals(currentUser.getId());
+
+        // Se não for o próprio usuário saindo, apenas o proprietário pode remover outros membros
+        if (!isSelf && !isCurrentOwner) {
+            throw new ForbiddenException("Acesso negado", "Apenas o proprietário pode remover outros membros do grupo");
+        }
+
+        // Membros comuns não podem expulsar o proprietário
+        if (isTargetOwner && !isSelf) {
+            throw new ForbiddenException("Acesso negado", "O proprietário do grupo não pode ser removido por outros membros");
+        }
+
+        if (isTargetOwner) {
+            // O admin está saindo do grupo
+            List<UserGroup> otherMembers = userGroupRepository.findByGroupIdAndUserIdNot(groupId, targetUserId);
+
+            if (otherMembers.isEmpty()) {
+                // Não há mais membros: grupo deletado
+                group.setDeletedAt(Instant.now());
+                group.setUpdatedAt(Instant.now());
+                groupRepository.save(group);
+            } else {
+                // Um membro aleatório recebe o admin
+                int randomIndex = java.util.concurrent.ThreadLocalRandom.current().nextInt(otherMembers.size());
+                User newOwner = otherMembers.get(randomIndex).getUser();
+                group.setOwner(newOwner);
+                group.setUpdatedAt(Instant.now());
+                groupRepository.save(group);
+            }
+        } else {
+            // Membro comum saindo ou sendo expulso. Se não restar nenhum membro no grupo, deleta o grupo
+            int remainingCount = userGroupRepository.countByGroupId(groupId) - 1;
+            if (remainingCount <= 0) {
+                group.setDeletedAt(Instant.now());
+                group.setUpdatedAt(Instant.now());
+                groupRepository.save(group);
+            }
         }
 
         userGroupRepository.deleteByUserIdAndGroupId(targetUserId, groupId);
