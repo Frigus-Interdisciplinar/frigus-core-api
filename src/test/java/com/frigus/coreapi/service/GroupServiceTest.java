@@ -133,6 +133,7 @@ class GroupServiceTest {
                 .build();
 
         when(planLimitsResolverService.resolveLimitsForCurrentUser()).thenReturn(limits);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(currentUser.getId())).thenReturn(false);
         when(groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(false);
         when(groupRepository.save(any(Group.class))).thenReturn(sampleGroup);
         when(userGroupRepository.save(any(UserGroup.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -159,6 +160,28 @@ class GroupServiceTest {
         verify(userGroupRepository).save(any(UserGroup.class));
         verify(conversationRepository).save(any(Conversation.class));
         verify(conversationParticipantRepository).save(any(ConversationParticipant.class));
+    }
+
+    @Test
+    @DisplayName("Deve bloquear criação de grupo para usuário que já faz parte de outro grupo ativo")
+    void shouldThrowConflictWhenUserAlreadyBelongsToAnyActiveGroupOnCreate() {
+        GroupCreateRequestDto dto = GroupCreateRequestDto.builder()
+                .name("Outro Grupo")
+                .build();
+
+        PlanLimitsDto limits = PlanLimitsDto.builder()
+                .planCode(PlanCode.PLUS)
+                .maxGroupsCreated(1)
+                .build();
+
+        when(planLimitsResolverService.resolveLimitsForCurrentUser()).thenReturn(limits);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(currentUser.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> groupService.createGroup(dto))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Usuário já pertence a um grupo");
+
+        verify(groupRepository, never()).save(any());
     }
 
     @Test
@@ -195,6 +218,7 @@ class GroupServiceTest {
                 .build();
 
         when(planLimitsResolverService.resolveLimitsForCurrentUser()).thenReturn(limits);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(currentUser.getId())).thenReturn(false);
         when(groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(true);
 
         assertThatThrownBy(() -> groupService.createGroup(dto))
@@ -239,6 +263,7 @@ class GroupServiceTest {
         when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
         when(userRepository.findById(otherUser.getId())).thenReturn(Optional.of(otherUser));
         when(userGroupRepository.existsByUserIdAndGroupId(otherUser.getId(), sampleGroup.getId())).thenReturn(false);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(otherUser.getId())).thenReturn(false);
 
         PlanLimitsDto limits = PlanLimitsDto.builder()
                 .planCode(PlanCode.PLUS)
@@ -275,12 +300,27 @@ class GroupServiceTest {
     }
 
     @Test
+    @DisplayName("Deve bloquear adição de membro quando usuário já faz parte de outro grupo ativo")
+    void shouldThrowConflictWhenTargetUserAlreadyBelongsToAnotherGroupOnAddMember() {
+        when(userGroupRepository.existsByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId())).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
+        when(userRepository.findById(otherUser.getId())).thenReturn(Optional.of(otherUser));
+        when(userGroupRepository.existsByUserIdAndGroupId(otherUser.getId(), sampleGroup.getId())).thenReturn(false);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(otherUser.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> groupService.addMember(sampleGroup.getId(), AddGroupMemberRequestDto.builder().userId(otherUser.getId()).build()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Usuário já pertence a um grupo");
+    }
+
+    @Test
     @DisplayName("Deve bloquear adição de membro quando limite de membros do plano do dono for atingido")
     void shouldThrowBadRequestWhenPlanLimitReached() {
         when(userGroupRepository.existsByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId())).thenReturn(true);
         when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
         when(userRepository.findById(otherUser.getId())).thenReturn(Optional.of(otherUser));
         when(userGroupRepository.existsByUserIdAndGroupId(otherUser.getId(), sampleGroup.getId())).thenReturn(false);
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(otherUser.getId())).thenReturn(false);
 
         PlanLimitsDto limits = PlanLimitsDto.builder()
                 .planCode(PlanCode.FREE)
@@ -305,6 +345,76 @@ class GroupServiceTest {
         assertThatThrownBy(() -> groupService.addMember(sampleGroup.getId(), AddGroupMemberRequestDto.builder().userId(otherUser.getId()).build()))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Usuário já é membro");
+    }
+
+    @Test
+    @DisplayName("Deve repassar o admin para um membro aleatório quando o proprietário sair do grupo e houver outros membros")
+    void shouldReassignAdminToRandomMemberWhenOwnerLeavesGroup() {
+        when(userGroupRepository.existsByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId())).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
+        when(userGroupRepository.findByGroupIdAndUserIdNot(sampleGroup.getId(), currentUser.getId()))
+                .thenReturn(List.of(UserGroup.builder().user(otherUser).group(sampleGroup).build()));
+        when(conversationRepository.findByGroupId(sampleGroup.getId())).thenReturn(List.of(sampleConversation));
+
+        groupService.removeMember(sampleGroup.getId(), currentUser.getId());
+
+        assertThat(sampleGroup.getOwner()).isEqualTo(otherUser);
+        assertThat(sampleGroup.getDeletedAt()).isNull();
+        verify(groupRepository).save(sampleGroup);
+        verify(userGroupRepository).deleteByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId());
+    }
+
+    @Test
+    @DisplayName("Deve deletar o grupo quando o proprietário sair e não houver mais nenhum membro no grupo")
+    void shouldDeleteGroupWhenOwnerLeavesAndNoOtherMembersExist() {
+        when(userGroupRepository.existsByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId())).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
+        when(userGroupRepository.findByGroupIdAndUserIdNot(sampleGroup.getId(), currentUser.getId()))
+                .thenReturn(List.of());
+        when(conversationRepository.findByGroupId(sampleGroup.getId())).thenReturn(List.of(sampleConversation));
+
+        groupService.leaveGroup(sampleGroup.getId());
+
+        assertThat(sampleGroup.getDeletedAt()).isNotNull();
+        verify(groupRepository).save(sampleGroup);
+        verify(userGroupRepository).deleteByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId());
+    }
+
+    @Test
+    @DisplayName("Deve lançar ForbiddenException quando membro comum tentar remover o proprietário")
+    void shouldThrowForbiddenWhenNonOwnerTriesToRemoveOwner() {
+        // Logged in as otherUser (non-owner)
+        var nonOwnerAuth = new UsernamePasswordAuthenticationToken(otherUser, null, List.of());
+        SecurityContextHolder.getContext().setAuthentication(nonOwnerAuth);
+
+        when(userGroupRepository.existsByUserIdAndGroupId(otherUser.getId(), sampleGroup.getId())).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
+        when(userGroupRepository.existsByUserIdAndGroupId(currentUser.getId(), sampleGroup.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> groupService.removeMember(sampleGroup.getId(), currentUser.getId()))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("Acesso negado");
+
+        verify(userGroupRepository, never()).deleteByUserIdAndGroupId(any(), any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar ForbiddenException quando membro comum tentar remover outro membro")
+    void shouldThrowForbiddenWhenNonOwnerTriesToRemoveOtherMember() {
+        User thirdUser = User.builder().id(UUID.randomUUID()).name("Pedro").build();
+
+        var nonOwnerAuth = new UsernamePasswordAuthenticationToken(otherUser, null, List.of());
+        SecurityContextHolder.getContext().setAuthentication(nonOwnerAuth);
+
+        when(userGroupRepository.existsByUserIdAndGroupId(otherUser.getId(), sampleGroup.getId())).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedAtIsNull(sampleGroup.getId())).thenReturn(Optional.of(sampleGroup));
+        when(userGroupRepository.existsByUserIdAndGroupId(thirdUser.getId(), sampleGroup.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> groupService.removeMember(sampleGroup.getId(), thirdUser.getId()))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("Acesso negado");
+
+        verify(userGroupRepository, never()).deleteByUserIdAndGroupId(any(), any());
     }
 
     @Test

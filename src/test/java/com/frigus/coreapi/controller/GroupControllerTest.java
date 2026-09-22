@@ -86,4 +86,14 @@ class GroupControllerTest {
 
         verify(groupService).removeMember(groupId, userId);
     }
+
+    @Test
+    @DisplayName("Deve permitir usuário sair do grupo")
+    void shouldLeaveGroup() {
+        UUID groupId = UUID.randomUUID();
+
+        groupController.leaveGroup(groupId);
+
+        verify(groupService).leaveGroup(groupId);
+    }
 }
