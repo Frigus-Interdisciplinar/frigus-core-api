@@ -8,6 +8,7 @@ import com.frigus.coreapi.mapper.MessageMapper;
 import com.frigus.coreapi.model.Conversation;
 import com.frigus.coreapi.model.ConversationParticipant;
 import com.frigus.coreapi.model.ConversationParticipantId;
+import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.Message;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.ConversationParticipantRepository;
@@ -101,8 +102,11 @@ class MessageServiceTest {
     }
 
     @Test
-    @DisplayName("Deve enviar mensagem com sucesso e publicar no WebSocket")
+    @DisplayName("Deve enviar mensagem com sucesso e publicar no WebSocket (tópico de conversa e tópicos de grupo)")
     void shouldSendMessageSuccessfully() {
+        Group group = Group.builder().id(UUID.randomUUID()).name("Família").build();
+        sampleConversation.setGroup(group);
+
         MessageSendDto dto = MessageSendDto.builder()
                 .conversationId(sampleConversation.getId())
                 .messageType(MessageType.TEXT)
@@ -137,6 +141,47 @@ class MessageServiceTest {
         assertThat(result.getContent()).isEqualTo("Olá família!");
         verify(messageRepository).save(any(Message.class));
         verify(messagingTemplate).convertAndSend(eq("/topic/conversations." + sampleConversation.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId() + ".messages"), eq(responseDto));
+    }
+
+    @Test
+    @DisplayName("Deve enviar mensagem resolvendo conversa através do groupId")
+    void shouldSendMessageUsingGroupId() {
+        Group group = Group.builder().id(UUID.randomUUID()).name("Família").build();
+        sampleConversation.setGroup(group);
+
+        MessageSendDto dto = MessageSendDto.builder()
+                .groupId(group.getId())
+                .messageType(MessageType.TEXT)
+                .content("Mensagem para o grupo")
+                .build();
+
+        when(conversationRepository.findByGroupId(group.getId())).thenReturn(List.of(sampleConversation));
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+
+        Message savedMessage = Message.builder()
+                .id(2)
+                .conversationParticipants(sampleParticipant)
+                .content("Mensagem para o grupo")
+                .build();
+
+        when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+
+        MessageResponseDto responseDto = MessageResponseDto.builder()
+                .id(2)
+                .conversationId(sampleConversation.getId())
+                .content("Mensagem para o grupo")
+                .build();
+        when(messageMapper.toDto(savedMessage)).thenReturn(responseDto);
+
+        MessageResponseDto result = messageService.sendMessage(currentUser, dto);
+
+        assertThat(result).isNotNull();
+        verify(messagingTemplate).convertAndSend(eq("/topic/conversations." + sampleConversation.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId()), eq(responseDto));
     }
 
     @Test

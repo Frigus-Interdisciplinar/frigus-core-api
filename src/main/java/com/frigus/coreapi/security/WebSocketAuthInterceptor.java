@@ -56,6 +56,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private String recoverToken(StompHeaderAccessor accessor) {
         List<String> authHeaders = accessor.getNativeHeader("Authorization");
+        if (authHeaders == null || authHeaders.isEmpty()) {
+            authHeaders = accessor.getNativeHeader("authorization");
+        }
         if (authHeaders != null && !authHeaders.isEmpty()) {
             String authHeader = authHeaders.get(0);
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -65,6 +68,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         }
 
         List<String> tokenHeaders = accessor.getNativeHeader("token");
+        if (tokenHeaders == null || tokenHeaders.isEmpty()) {
+            tokenHeaders = accessor.getNativeHeader("Token");
+        }
         if (tokenHeaders != null && !tokenHeaders.isEmpty()) {
             return tokenHeaders.get(0);
         }

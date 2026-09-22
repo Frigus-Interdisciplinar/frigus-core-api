@@ -19,6 +19,10 @@ public interface UserGroupRepository extends BaseRepository<UserGroup, Integer> 
 
     int countByGroupId(UUID groupId);
 
+    boolean existsByUserIdAndGroupDeletedAtIsNull(UUID userId);
+
+    List<UserGroup> findByGroupIdAndUserIdNot(UUID groupId, UUID userId);
+
     void deleteByUserIdAndGroupId(UUID userId, UUID groupId);
 
     @Query("SELECT CASE WHEN COUNT(ug1) > 0 THEN true ELSE false END " +

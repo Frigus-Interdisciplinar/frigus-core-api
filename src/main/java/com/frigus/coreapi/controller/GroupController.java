@@ -75,4 +75,11 @@ public class GroupController {
     public void removeMember(@PathVariable UUID id, @PathVariable UUID userId) {
         groupService.removeMember(id, userId);
     }
+
+    @DeleteMapping("/{id}/leave")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Sair do grupo atual (repassa admin caso seja o proprietário ou encerra o grupo se for o último)")
+    public void leaveGroup(@PathVariable UUID id) {
+        groupService.leaveGroup(id);
+    }
 }

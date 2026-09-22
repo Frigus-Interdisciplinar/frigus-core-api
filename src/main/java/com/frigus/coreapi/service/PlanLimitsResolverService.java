@@ -57,6 +57,7 @@ public class PlanLimitsResolverService {
 
     public PlanLimitsDto getLimitsForPlan(PlanCode planCode) {
         // default for frigus free plan
+        int maxGroupsCreated = 0;
         int maxGroupMembers = 3;
         int maxStocks = 1;
         int maxProductsPerStock = 20;
@@ -69,8 +70,10 @@ public class PlanLimitsResolverService {
 
         switch (planCode) {
             case FREE:
+                maxGroupsCreated = 0;
                 break;
             case PLUS:
+                maxGroupsCreated = 1;
                 maxGroupMembers = 5;
                 maxStocks = 3;
                 maxProductsPerStock = 50;
@@ -79,6 +82,7 @@ public class PlanLimitsResolverService {
                 allowMoneySaving = true;
                 break;
             case FAMILY:
+                maxGroupsCreated = 1;
                 maxGroupMembers = 10;
                 maxStocks = 5;
                 maxProductsPerStock = 100;
@@ -87,6 +91,7 @@ public class PlanLimitsResolverService {
                 allowMoneySaving = true;
                 break;
             case COMMERCIAL:
+                maxGroupsCreated = 1;
                 maxGroupMembers = 20;
                 maxStocks = 10;
                 maxProductsPerStock = 200;
@@ -95,6 +100,7 @@ public class PlanLimitsResolverService {
                 allowMoneySaving = true;
                 break;
             case ENTERPRISE:
+                maxGroupsCreated = 1;
                 maxGroupMembers = Integer.MAX_VALUE;
                 maxStocks = Integer.MAX_VALUE;
                 maxProductsPerStock = Integer.MAX_VALUE;
@@ -111,6 +117,7 @@ public class PlanLimitsResolverService {
 
         return PlanLimitsDto.builder()
                 .planCode(planCode)
+                .maxGroupsCreated(maxGroupsCreated)
                 .maxGroupMembers(maxGroupMembers)
                 .maxStocks(maxStocks)
                 .maxProductsPerStock(maxProductsPerStock)

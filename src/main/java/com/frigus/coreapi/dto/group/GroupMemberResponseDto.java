@@ -14,5 +14,6 @@ public class GroupMemberResponseDto {
     private UUID userId;
     private String name;
     private String email;
+    private Boolean isOwner;
     private Instant joinedAt;
 }

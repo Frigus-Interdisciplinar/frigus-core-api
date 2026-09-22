@@ -3,6 +3,7 @@ package com.frigus.coreapi.service;
 import com.frigus.coreapi.dto.message.MessageResponseDto;
 import com.frigus.coreapi.dto.message.MessageSendDto;
 import com.frigus.coreapi.enums.MessageType;
+import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.ForbiddenException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.exception.UnauthorizedException;
@@ -55,7 +56,24 @@ public class MessageService {
     @Transactional
     public MessageResponseDto sendMessage(User sender, MessageSendDto dto) {
         User actualSender = sender != null ? sender : requireCurrentUser();
-        UUID conversationId = dto.getConversationId();
+        UUID resolvedConversationId = dto.getConversationId();
+
+        // Se conversationId não foi passado, mas groupId foi informado, busca a conversa do grupo
+        if (resolvedConversationId == null && dto.getGroupId() != null) {
+            UUID groupId = dto.getGroupId();
+            Conversation groupConv = conversationRepository.findByGroupId(groupId)
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new NotFoundException("Conversa do grupo não encontrada", 
+                            "Nenhuma conversa encontrada para o grupo com ID " + groupId));
+            resolvedConversationId = groupConv.getId();
+        }
+
+        if (resolvedConversationId == null) {
+            throw new BadRequestException("Parâmetro inválido", "Informe o conversationId ou o groupId para enviar a mensagem");
+        }
+
+        final UUID conversationId = resolvedConversationId;
 
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new NotFoundException("Conversa não encontrada", "Conversa com ID " + conversationId + " não existe"));
@@ -94,6 +112,17 @@ public class MessageService {
             messagingTemplate.convertAndSend("/topic/conversations." + conversationId, responseDto);
         } catch (Exception e) {
             log.error("Erro ao enviar mensagem via WebSocket para o tópico /topic/conversations.{}: {}", conversationId, e.getMessage());
+        }
+
+        // Broadcast to group topic if it's a group conversation
+        if (conversation.getGroup() != null && conversation.getGroup().getId() != null) {
+            UUID groupId = conversation.getGroup().getId();
+            try {
+                messagingTemplate.convertAndSend("/topic/groups." + groupId, responseDto);
+                messagingTemplate.convertAndSend("/topic/groups." + groupId + ".messages", responseDto);
+            } catch (Exception e) {
+                log.error("Erro ao enviar mensagem via WebSocket para os tópicos do grupo {}: {}", groupId, e.getMessage());
+            }
         }
 
         return responseDto;

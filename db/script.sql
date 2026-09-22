@@ -148,26 +148,6 @@ CREATE TYPE transaction_status_enum AS ENUM(
 -- ============================================================
 -- TABLES
 -- ============================================================
-CREATE TABLE groups (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR NOT NULL,
-  banner_picture TEXT,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TIMESTAMP
-);
-
-CREATE TABLE recipes (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL,
-  description TEXT,
-  instructions TEXT,
-  domestic_only BOOLEAN NOT NULL DEFAULT TRUE,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR NOT NULL,
@@ -179,6 +159,28 @@ CREATE TABLE users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
+);
+
+CREATE TABLE groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL,
+  name VARCHAR NOT NULL,
+  banner_picture TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP,
+  CONSTRAINT fk_groups_owner_id_users FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE recipes (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR NOT NULL,
+  description TEXT,
+  instructions TEXT,
+  domestic_only BOOLEAN NOT NULL DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE stocks (
@@ -572,6 +574,12 @@ WHERE
 CREATE INDEX idx_plans_deleted_at ON plans (deleted_at);
 
 CREATE INDEX idx_groups_deleted_at ON groups (deleted_at);
+
+CREATE INDEX idx_groups_owner ON groups (owner_id);
+
+CREATE UNIQUE INDEX uq_groups_one_active_per_owner ON groups (owner_id)
+WHERE
+  deleted_at IS NULL;
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS

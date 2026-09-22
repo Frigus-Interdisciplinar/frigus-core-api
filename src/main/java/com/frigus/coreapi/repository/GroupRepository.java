@@ -15,6 +15,12 @@ import java.util.UUID;
 public interface GroupRepository extends BaseRepository<Group, UUID> {
     Optional<Group> findByIdAndDeletedAtIsNull(UUID id);
 
+    boolean existsByOwnerIdAndDeletedAtIsNull(UUID ownerId);
+
+    int countByOwnerIdAndDeletedAtIsNull(UUID ownerId);
+
+    Optional<Group> findByOwnerIdAndDeletedAtIsNull(UUID ownerId);
+
     @Query("SELECT ug.group FROM UserGroup ug WHERE ug.user.id = :userId AND ug.group.deletedAt IS NULL")
     List<Group> findGroupsByUserId(@Param("userId") UUID userId);
 
