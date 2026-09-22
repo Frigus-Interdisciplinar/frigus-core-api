@@ -698,8 +698,8 @@
                     <!-- U1 PROFILE & GROUPS -->
                     <div class="card">
                         <div class="card-title">
-                            <span>Perfil & Família</span>
-                            <span id="u1-role-tag" class="tag-pill tag-group">DOMESTIC</span>
+                            <span>Perfil & Plano</span>
+                            <span id="u1-role-tag" class="tag-pill tag-group">DOMESTIC (PLUS)</span>
                         </div>
                         <div class="uuid-badge" onclick="copyUId('u1')" title="Clique para copiar">
                             <span id="u1-uid-text">ID: 596df96a-7d7c-4efc-89ef-bade51334d72</span>
@@ -708,11 +708,11 @@
 
                         <div style="display: flex; gap: 4px; margin-top: 4px;">
                             <input type="text" id="u1-group-name" placeholder="Nome Grupo" value="Família Mendes">
-                            <button class="btn btn-secondary btn-sm" onclick="createGroupU1()">Criar</button>
+                            <button class="btn btn-secondary btn-sm" onclick="createGroupU1()">+ Criar Grupo</button>
                         </div>
 
-                        <div class="card-title" style="margin-top: 4px;">Grupos de Pessoas:</div>
-                        <div class="list-box" id="u1-groups-list">
+                        <div class="card-title" style="margin-top: 4px;">Grupos (clique p/ abrir chat):</div>
+                        <div class="list-box" id="u1-groups-list" style="height: 75px;">
                             <div style="color: var(--text-secondary); font-size: 10px;">Clique em logar para carregar.</div>
                         </div>
 
@@ -775,16 +775,22 @@
                     <!-- U2 PROFILE & GROUPS -->
                     <div class="card">
                         <div class="card-title">
-                            <span>Perfil & Família</span>
-                            <span id="u2-role-tag" class="tag-pill tag-group">DOMESTIC</span>
+                            <span>Perfil & Plano</span>
+                            <span id="u2-role-tag" class="tag-pill tag-dm">FREE</span>
                         </div>
                         <div class="uuid-badge" onclick="copyUId('u2')" title="Clique para copiar">
                             <span id="u2-uid-text">ID: aabecd3e-26bc-4c20-8ee2-a905d7460169</span>
                             <span>📋</span>
                         </div>
 
-                        <div class="card-title" style="margin-top: 4px;">Grupos de Pessoas:</div>
-                        <div class="list-box" id="u2-groups-list" style="height: 60px;">
+                        <div style="display: flex; gap: 4px; margin-top: 4px;">
+                            <input type="text" id="u2-group-name" placeholder="Nome Grupo" value="Galera do Davi">
+                            <button class="btn btn-secondary btn-sm" onclick="createGroupU2()">+ Criar Grupo</button>
+                            <button class="btn btn-warning btn-sm" onclick="upgradeDaviToPlus()">⭐ Assinar Plus</button>
+                        </div>
+
+                        <div class="card-title" style="margin-top: 4px;">Grupos (clique p/ abrir chat):</div>
+                        <div class="list-box" id="u2-groups-list" style="height: 75px;">
                             <div style="color: var(--text-secondary); font-size: 10px;">Clique em logar para carregar.</div>
                         </div>
 
@@ -1429,7 +1435,11 @@
                 const res = await api('/groups', 'POST', { name }, u1.token);
                 u1.selectedGroupId = res.id;
                 await loadGroupsU1();
-                alert(`Grupo "${res.name}" criado com sucesso!`);
+                await loadConversationsU1();
+                alert(`Grupo "${res.name}" criado com sucesso! (Dono: Gabriel)`);
+                if (res.defaultConversationId) {
+                    selectConvU1({ id: res.defaultConversationId, name: res.name, conversationType: 'GROUP' });
+                }
             } catch (err) {
                 alert(`Erro ao criar grupo: ${err.message}`);
             }
@@ -1447,15 +1457,24 @@
                 }
                 groups.forEach(g => {
                     if (!u1.selectedGroupId) u1.selectedGroupId = g.id;
+                    const isOwner = g.isOwner || (g.ownerId === u1.id);
                     const row = document.createElement('div');
                     row.className = `list-row ${u1.selectedGroupId === g.id ? 'active' : ''}`;
                     row.onclick = () => {
                         u1.selectedGroupId = g.id;
                         loadGroupsU1();
+                        if (g.defaultConversationId) {
+                            selectConvU1({ id: g.defaultConversationId, name: g.name, conversationType: 'GROUP' });
+                        }
                     };
                     row.innerHTML = `
-                        <span><strong>${g.name}</strong></span>
-                        <span class="tag-pill tag-group">${g.members ? g.members.length : g.membersCount} memb.</span>
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <span><strong>${g.name}</strong></span>
+                            <span style="font-size:9px; color:${isOwner ? 'var(--primary)' : 'var(--text-secondary)'};">
+                                ${isOwner ? '👑 DONO' : '🤝 CONVIDADO'} (${g.members ? g.members.length : g.membersCount} memb.)
+                            </span>
+                        </div>
+                        <span class="tag-pill tag-group">💬 Chat</span>
                     `;
                     list.appendChild(row);
                 });
@@ -1483,8 +1502,11 @@
             try {
                 await api(`/groups/${u1.selectedGroupId}/members`, 'POST', { userId: targetId }, u1.token);
                 await loadGroupsU1();
-                if (u2.token) await loadGroupsU2();
-                alert('Davi foi adicionado com sucesso ao grupo de pessoas!');
+                if (u2.token) {
+                    await loadGroupsU2();
+                    await loadConversationsU2();
+                }
+                alert('Davi foi adicionado com sucesso ao grupo de pessoas e sincronizado no chat!');
             } catch (err) {
                 alert(`Erro ao convidar: ${err.message}`);
             }
@@ -1582,6 +1604,39 @@
             }
         }
 
+        async function createGroupU2() {
+            const name = document.getElementById('u2-group-name').value.trim();
+            if (!name || !u2.token) return alert('Faça login primeiro com Davi');
+            try {
+                const res = await api('/groups', 'POST', { name }, u2.token);
+                u2.selectedGroupId = res.id;
+                await loadGroupsU2();
+                await loadConversationsU2();
+                alert(`Grupo "${res.name}" criado com sucesso por Davi!`);
+                if (res.defaultConversationId) {
+                    selectConvU2({ id: res.defaultConversationId, name: res.name, conversationType: 'GROUP' });
+                }
+            } catch (err) {
+                alert(`Regra de Negócio: ${err.message}\n(Plano Free não pode criar grupos. Clique em "Assinar Plus" para assinar!)`);
+            }
+        }
+
+        async function upgradeDaviToPlus() {
+            if (!u2.token) return alert('Faça login com Davi primeiro');
+            try {
+                const checkout = await api('/transactions', 'POST', {
+                    planCode: 'PLUS',
+                    paymentMethod: 'CREDIT_CARD'
+                }, u2.token);
+                document.getElementById('u2-role-tag').innerText = 'PLUS';
+                document.getElementById('u2-role-tag').className = 'tag-pill tag-group';
+                alert('Plano PLUS ativado com sucesso para Davi! Agora ele pode criar seu próprio grupo e continuar nos outros!');
+                await loadGroupsU2();
+            } catch (err) {
+                alert(`Erro ao assinar plano: ${err.message}`);
+            }
+        }
+
         async function loadGroupsU2() {
             if (!u2.token) return;
             const list = document.getElementById('u2-groups-list');
@@ -1593,11 +1648,24 @@
                     return;
                 }
                 groups.forEach(g => {
+                    const isOwner = g.isOwner || (g.ownerId === u2.id);
                     const row = document.createElement('div');
-                    row.className = 'list-row';
+                    row.className = `list-row ${u2.selectedGroupId === g.id ? 'active' : ''}`;
+                    row.onclick = () => {
+                        u2.selectedGroupId = g.id;
+                        loadGroupsU2();
+                        if (g.defaultConversationId) {
+                            selectConvU2({ id: g.defaultConversationId, name: g.name, conversationType: 'GROUP' });
+                        }
+                    };
                     row.innerHTML = `
-                        <span><strong>${g.name}</strong></span>
-                        <span class="tag-pill tag-group">${g.members ? g.members.length : g.membersCount} memb.</span>
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <span><strong>${g.name}</strong></span>
+                            <span style="font-size:9px; color:${isOwner ? 'var(--primary)' : 'var(--text-secondary)'};">
+                                ${isOwner ? '👑 DONO' : '🤝 CONVIDADO'} (${g.members ? g.members.length : g.membersCount} memb.)
+                            </span>
+                        </div>
+                        <span class="tag-pill tag-group">💬 Chat</span>
                     `;
                     list.appendChild(row);
                 });
@@ -1744,20 +1812,32 @@
                 // 2. Logar Davi
                 await loginU2();
                 // 3. Criar Grupo Gabriel
-                const group = await api('/groups', 'POST', { name: 'Família Mendes & Franco' }, u1.token);
+                let group;
+                try {
+                    group = await api('/groups', 'POST', { name: 'Família Mendes & Franco' }, u1.token);
+                } catch(e) {
+                    const existing = await api('/groups', 'GET', null, u1.token);
+                    group = existing[0];
+                }
                 u1.selectedGroupId = group.id;
                 // 4. Adicionar Davi ao grupo
-                await api(`/groups/${group.id}/members`, 'POST', { userId: u2.id }, u1.token);
+                try {
+                    await api(`/groups/${group.id}/members`, 'POST', { userId: u2.id }, u1.token);
+                } catch(e) {}
                 await loadGroupsU1();
                 await loadGroupsU2();
-                // 5. Abrir DM 1x1
-                const conv = await api('/conversations/private', 'POST', { targetUserId: u2.id }, u1.token);
-                selectConvU1(conv);
-                selectConvU2(conv);
-                // 6. Enviar mensagem de boas-vindas
-                setTimeout(() => {
-                    sendWsMsg(u1, conv.id, 'Fala Davi! Testando nosso chat em tempo real com WebSocket 🚀');
-                }, 500);
+                await loadConversationsU1();
+                await loadConversationsU2();
+                // 5. Selecionar o Chat do Grupo em ambos
+                const groupConvId = group.defaultConversationId;
+                if (groupConvId) {
+                    selectConvU1({ id: groupConvId, name: group.name, conversationType: 'GROUP' });
+                    selectConvU2({ id: groupConvId, name: group.name, conversationType: 'GROUP' });
+                    // 6. Enviar mensagem de boas-vindas no grupo via WebSocket
+                    setTimeout(() => {
+                        sendWsMsg(u1, groupConvId, 'Fala Davi! Bem-vindo ao grupo da família. WebSocket em tempo real funcionando! 🚀');
+                    }, 600);
+                }
             } catch (err) {
                 alert(`Erro no setup automático: ${err.message}`);
             }

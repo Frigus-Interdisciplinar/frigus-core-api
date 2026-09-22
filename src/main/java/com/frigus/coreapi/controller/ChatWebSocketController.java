@@ -21,12 +21,22 @@ public class ChatWebSocketController {
 
     @MessageMapping("/chat.send")
     public void handleSendMessage(@Payload MessageSendDto dto, Principal principal) {
-        User sender = null;
-        if (principal instanceof Authentication auth && auth.getPrincipal() instanceof User user) {
-            sender = user;
-        }
-
-        log.debug("Mensagem recebida via WebSocket de: {}", sender != null ? sender.getEmail() : "anônimo");
+        User sender = resolveSender(principal);
+        log.debug("Mensagem recebida via WebSocket [/chat.send] de: {}", sender != null ? sender.getEmail() : "anônimo");
         messageService.sendMessage(sender, dto);
+    }
+
+    @MessageMapping("/groups.send")
+    public void handleSendGroupMessage(@Payload MessageSendDto dto, Principal principal) {
+        User sender = resolveSender(principal);
+        log.debug("Mensagem de grupo recebida via WebSocket [/groups.send] de: {}", sender != null ? sender.getEmail() : "anônimo");
+        messageService.sendMessage(sender, dto);
+    }
+
+    private User resolveSender(Principal principal) {
+        if (principal instanceof Authentication auth && auth.getPrincipal() instanceof User user) {
+            return user;
+        }
+        return null;
     }
 }

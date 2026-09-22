@@ -5,6 +5,7 @@ import com.frigus.coreapi.dto.group.GroupCreateRequestDto;
 import com.frigus.coreapi.dto.group.GroupResponseDto;
 import com.frigus.coreapi.dto.group.GroupUpdateRequestDto;
 import com.frigus.coreapi.dto.plan.PlanLimitsDto;
+import com.frigus.coreapi.enums.ConversationType;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.ConflictException;
 import com.frigus.coreapi.exception.ForbiddenException;
@@ -13,6 +14,7 @@ import com.frigus.coreapi.exception.UnauthorizedException;
 import com.frigus.coreapi.mapper.GroupMapper;
 import com.frigus.coreapi.model.Conversation;
 import com.frigus.coreapi.model.ConversationParticipant;
+import com.frigus.coreapi.model.ConversationParticipantId;
 import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.model.UserGroup;
@@ -30,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -50,7 +53,9 @@ public class GroupService {
         return groups.stream()
                 .map(group -> {
                     List<UserGroup> members = userGroupRepository.findByGroupId(group.getId());
-                    return groupMapper.toDtoWithMembers(group, members);
+                    UUID defaultConvId = conversationRepository.findByGroupId(group.getId())
+                            .stream().findFirst().map(Conversation::getId).orElse(null);
+                    return groupMapper.toDtoWithMembers(group, members, defaultConvId);
                 })
                 .toList();
     }
@@ -60,7 +65,9 @@ public class GroupService {
         return groupRepository.findGroupsByUserId(currentUser.getId(), pageable)
                 .map(group -> {
                     List<UserGroup> members = userGroupRepository.findByGroupId(group.getId());
-                    return groupMapper.toDtoWithMembers(group, members);
+                    UUID defaultConvId = conversationRepository.findByGroupId(group.getId())
+                            .stream().findFirst().map(Conversation::getId).orElse(null);
+                    return groupMapper.toDtoWithMembers(group, members, defaultConvId);
                 });
     }
 
@@ -72,14 +79,31 @@ public class GroupService {
                 .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "Grupo com ID " + groupId + " não existe"));
 
         List<UserGroup> members = userGroupRepository.findByGroupId(groupId);
-        return groupMapper.toDtoWithMembers(group, members);
+        UUID defaultConvId = conversationRepository.findByGroupId(groupId)
+                .stream().findFirst().map(Conversation::getId).orElse(null);
+        return groupMapper.toDtoWithMembers(group, members, defaultConvId);
     }
 
     @Transactional
     public GroupResponseDto createGroup(GroupCreateRequestDto dto) {
         User currentUser = requireCurrentUser();
 
+        // 1. Validar se o plano do usuário permite criar grupos
+        PlanLimitsDto limits = planLimitsResolverService.resolveLimitsForCurrentUser();
+        if (limits.getMaxGroupsCreated() <= 0) {
+            throw new BadRequestException("Criação de grupo não permitida",
+                    "Usuários no plano gratuito não podem criar grupos próprios. Assine um plano para criar seu grupo.");
+        }
+
+        // 2. Validar se o usuário já possui 1 grupo ativo criado
+        if (groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())) {
+            throw new ConflictException("Limite de grupos atingido",
+                    "Você já possui um grupo ativo criado. O plano permite criar no máximo 1 grupo.");
+        }
+
+        // 3. Criar grupo vinculando o proprietário
         Group group = Group.builder()
+                .owner(currentUser)
                 .name(dto.getName().trim())
                 .bannerPicture(dto.getBannerPicture())
                 .createdAt(Instant.now())
@@ -88,6 +112,7 @@ public class GroupService {
 
         group = groupRepository.save(group);
 
+        // 4. Inserir criador como membro do grupo
         UserGroup userGroup = UserGroup.builder()
                 .user(currentUser)
                 .group(group)
@@ -97,7 +122,29 @@ public class GroupService {
 
         userGroupRepository.save(userGroup);
 
-        return groupMapper.toDtoWithMembers(group, List.of(userGroup));
+        // 5. Criar conversa padrão de grupo automaticamente e associar o criador
+        Conversation defaultConversation = Conversation.builder()
+                .conversationType(ConversationType.GROUP)
+                .group(group)
+                .name(group.getName())
+                .pairKey(null)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        defaultConversation = conversationRepository.save(defaultConversation);
+
+        ConversationParticipant cp = ConversationParticipant.builder()
+                .id(new ConversationParticipantId(defaultConversation.getId(), currentUser.getId()))
+                .conversation(defaultConversation)
+                .user(currentUser)
+                .joinedAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        conversationParticipantRepository.save(cp);
+
+        return groupMapper.toDtoWithMembers(group, List.of(userGroup), defaultConversation.getId());
     }
 
     @Transactional
@@ -119,7 +166,9 @@ public class GroupService {
         group = groupRepository.save(group);
 
         List<UserGroup> members = userGroupRepository.findByGroupId(groupId);
-        return groupMapper.toDtoWithMembers(group, members);
+        UUID defaultConvId = conversationRepository.findByGroupId(groupId)
+                .stream().findFirst().map(Conversation::getId).orElse(null);
+        return groupMapper.toDtoWithMembers(group, members, defaultConvId);
     }
 
     @Transactional
@@ -129,6 +178,10 @@ public class GroupService {
 
         Group group = groupRepository.findByIdAndDeletedAtIsNull(groupId)
                 .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "Grupo com ID " + groupId + " não existe"));
+
+        if (group.getOwner() != null && !group.getOwner().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Acesso negado", "Apenas o proprietário pode excluir este grupo");
+        }
 
         group.setDeletedAt(Instant.now());
         group.setUpdatedAt(Instant.now());
@@ -150,11 +203,13 @@ public class GroupService {
             throw new ConflictException("Usuário já é membro", "O usuário já faz parte deste grupo de pessoas");
         }
 
-        PlanLimitsDto limits = planLimitsResolverService.getLimitsForUser(currentUser.getId());
+        // Validação de limite de membros baseada no plano do proprietário do grupo
+        UUID ownerId = group.getOwner() != null ? group.getOwner().getId() : currentUser.getId();
+        PlanLimitsDto limits = planLimitsResolverService.getLimitsForUser(ownerId);
         int currentMemberCount = userGroupRepository.countByGroupId(groupId);
         if (currentMemberCount >= limits.getMaxGroupMembers()) {
             throw new BadRequestException("Limite de membros atingido",
-                    "O plano atual permite no máximo " + limits.getMaxGroupMembers() + " membros no grupo");
+                    "O plano do proprietário do grupo permite no máximo " + limits.getMaxGroupMembers() + " membros no grupo");
         }
 
         UserGroup userGroup = UserGroup.builder()
@@ -166,8 +221,31 @@ public class GroupService {
 
         userGroupRepository.save(userGroup);
 
+        // Sincronizar participante em todas as conversas ativas do grupo
+        List<Conversation> groupConversations = conversationRepository.findByGroupId(groupId);
+        for (Conversation conversation : groupConversations) {
+            Optional<ConversationParticipant> existingParticipant = conversationParticipantRepository
+                    .findByIdConversationIdAndIdUserId(conversation.getId(), targetUser.getId());
+            if (existingParticipant.isPresent()) {
+                ConversationParticipant participant = existingParticipant.get();
+                participant.setLeftAt(null);
+                participant.setUpdatedAt(Instant.now());
+                conversationParticipantRepository.save(participant);
+            } else {
+                ConversationParticipant participant = ConversationParticipant.builder()
+                        .id(new ConversationParticipantId(conversation.getId(), targetUser.getId()))
+                        .conversation(conversation)
+                        .user(targetUser)
+                        .joinedAt(Instant.now())
+                        .updatedAt(Instant.now())
+                        .build();
+                conversationParticipantRepository.save(participant);
+            }
+        }
+
         List<UserGroup> members = userGroupRepository.findByGroupId(groupId);
-        return groupMapper.toDtoWithMembers(group, members);
+        UUID defaultConvId = groupConversations.stream().findFirst().map(Conversation::getId).orElse(null);
+        return groupMapper.toDtoWithMembers(group, members, defaultConvId);
     }
 
     @Transactional
@@ -175,8 +253,16 @@ public class GroupService {
         User currentUser = requireCurrentUser();
         validateUserInGroup(currentUser.getId(), groupId);
 
+        Group group = groupRepository.findByIdAndDeletedAtIsNull(groupId)
+                .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "Grupo com ID " + groupId + " não existe"));
+
         if (!userGroupRepository.existsByUserIdAndGroupId(targetUserId, groupId)) {
             throw new NotFoundException("Membro não encontrado", "O usuário não pertence a este grupo");
+        }
+
+        if (group.getOwner() != null && group.getOwner().getId().equals(targetUserId)) {
+            throw new BadRequestException("Operação inválida",
+                    "O proprietário do grupo não pode ser removido do próprio grupo. Para encerrar o grupo, utilize a exclusão.");
         }
 
         userGroupRepository.deleteByUserIdAndGroupId(targetUserId, groupId);

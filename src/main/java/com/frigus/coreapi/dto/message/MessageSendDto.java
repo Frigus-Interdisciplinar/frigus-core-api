@@ -12,8 +12,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessageSendDto {
-    @NotNull(message = "O ID da conversa é obrigatório")
     private UUID conversationId;
+    private UUID groupId;
 
     private MessageType messageType;
 

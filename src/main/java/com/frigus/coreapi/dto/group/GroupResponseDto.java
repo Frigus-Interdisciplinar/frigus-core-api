@@ -13,6 +13,10 @@ import java.util.UUID;
 @AllArgsConstructor
 public class GroupResponseDto {
     private UUID id;
+    private UUID ownerId;
+    private String ownerName;
+    private Boolean isOwner;
+    private UUID defaultConversationId;
     private String name;
     private String bannerPicture;
     private int membersCount;

@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 public class PlanLimitsDto {
     private PlanCode planCode;
 
+    private int maxGroupsCreated;
     private int maxGroupMembers;
     private int maxStocks;
     private int maxProductsPerStock;
