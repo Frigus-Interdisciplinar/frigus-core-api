@@ -1,6 +1,9 @@
 package com.frigus.coreapi.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,6 +22,12 @@ public class DiscardController extends BaseController<Discard, Integer, DiscardC
 
     public DiscardController(DiscardService service) {
         super(service);
+    }
+
+    @GetMapping
+    @Override
+    public Page<DiscardResponseDto> findAll(Pageable pageable) {
+        return super.findAll(pageable);
     }
 
     @PostMapping

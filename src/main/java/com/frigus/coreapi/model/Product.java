@@ -2,6 +2,7 @@ package com.frigus.coreapi.model;
 
 import com.frigus.coreapi.enums.Category;
 import com.frigus.coreapi.enums.StoragePlace;
+import com.frigus.coreapi.enums.UnitOfMeasure;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -40,8 +41,9 @@ public class Product {
     private BigDecimal unitPrice;
 
     @NotNull
-    @Column(name = "unit_of_measure", nullable = false, length = Integer.MAX_VALUE)
-    private String unitOfMeasure;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "unit_of_measure", nullable = false, columnDefinition = "unit_of_measure_enum")
+    private UnitOfMeasure unitOfMeasure;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

@@ -20,7 +20,15 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**", "/swagger-ui/**", "/v3/api-docs/**", "/ws/**", "/*.html", "/static/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/plans", "/plans/active", "/plans/*", "/plans/code/*").permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/plans",
+                                "/plans/active",
+                                "/plans/*",
+                                "/plans/code/*",
+                                "/products",
+                                "/products/*")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
