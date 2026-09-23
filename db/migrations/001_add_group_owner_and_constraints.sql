@@ -1,11 +1,19 @@
 -- ============================================================
--- MIGRATION 001: Add owner_id to groups and enforce 1 active group per owner
+-- MIGRATION 001: Add owner_id to groups
+--
+-- Existing data contains one soft-deleted group without members and active
+-- groups that share inferred owners. Therefore this migration preserves the
+-- historical records while enforcing that every active group has an owner.
 -- ============================================================
 
--- 1. Add owner_id column if not exists
+BEGIN;
+
+-- 1. Add owner_id column if not exists.
+-- It stays nullable for historical soft-deleted groups that no longer have
+-- a member from whom an owner can be inferred.
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS owner_id UUID;
 
--- 2. Populate owner_id for existing groups with the first member from user_groups (or fallback)
+-- 2. Populate owner_id for groups that have members, using the first member.
 UPDATE groups g
 SET owner_id = (
     SELECT ug.user_id 
@@ -16,10 +24,16 @@ SET owner_id = (
 )
 WHERE g.owner_id IS NULL;
 
--- 3. Set NOT NULL constraint on owner_id
-ALTER TABLE groups ALTER COLUMN owner_id SET NOT NULL;
+-- 3. Require an owner for active groups. A soft-deleted historical group may
+-- remain without an owner, preventing this migration from inventing data.
+ALTER TABLE groups
+DROP CONSTRAINT IF EXISTS chk_active_groups_require_owner;
 
--- 4. Add foreign key referencing users(id)
+ALTER TABLE groups
+ADD CONSTRAINT chk_active_groups_require_owner
+CHECK (deleted_at IS NOT NULL OR owner_id IS NOT NULL);
+
+-- 4. Add foreign key referencing users(id).
 ALTER TABLE groups 
 DROP CONSTRAINT IF EXISTS fk_groups_owner_id_users;
 
@@ -30,9 +44,8 @@ FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE;
 -- 5. Create index on owner_id
 CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups (owner_id);
 
--- 6. Enforce at database level that each user/subscriber can have at most ONE active (non-deleted) group
-DROP INDEX IF EXISTS uq_groups_one_active_per_owner;
+-- 6. The one-active-group-per-owner index is intentionally deferred. Current
+-- historical records do not satisfy it; application rules already prevent
+-- new duplicates. Add it in a later migration after data cleanup.
 
-CREATE UNIQUE INDEX uq_groups_one_active_per_owner 
-ON groups (owner_id) 
-WHERE deleted_at IS NULL;
+COMMIT;

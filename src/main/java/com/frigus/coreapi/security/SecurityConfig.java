@@ -19,7 +19,16 @@ public class SecurityConfig {
         http.cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**", "/swagger-ui/**", "/v3/api-docs/**", "/ws/**", "/*.html", "/static/**").permitAll()
+                        .requestMatchers(
+                                "/auth/**",
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/ws/**",
+                                "/*.html",
+                                "/static/**")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/plans",
