@@ -27,10 +27,10 @@ USER spring:spring
 # Copia o JAR gerado no estagio de build
 COPY --from=builder /build/target/*.jar app.jar
 
-# Porta padrao do Spring Boot
-EXPOSE 8080
+# Portas do container (8080 padrao, 10000 do Render)
+EXPOSE 8080 10000
 
-# Otimizacoes de memoria para execucao em container
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+# Otimizacoes de memoria para execucao em container (Render Free 512MB) e IPv4
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+UseSerialGC -Xss256k -Djava.net.preferIPv4Stack=true"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
