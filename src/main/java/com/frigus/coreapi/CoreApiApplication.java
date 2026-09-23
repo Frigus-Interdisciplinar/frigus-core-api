@@ -4,12 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-// google cloud desativado temporiaramente para o projeto rodar, depois adicionaremos
 @EnableScheduling
-@SpringBootApplication(excludeName = {
-        "com.google.cloud.spring.autoconfigure.core.GcpContextAutoConfiguration",
-        "com.google.cloud.spring.autoconfigure.storage.GcpStorageAutoConfiguration",
-})
+@SpringBootApplication
 public class CoreApiApplication {
 
     public static void main(String[] args) {
