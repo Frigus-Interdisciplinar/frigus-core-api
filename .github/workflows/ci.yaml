@@ -1,19 +1,24 @@
 name: CI
+
 on:
   pull_request:
     branches: [main, dev]
   push:
     branches: [main, dev]
+  workflow_dispatch:
+
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 permissions:
   contents: read
+
 jobs:
-  pipeline:
+  tests:
     name: Build and Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -42,16 +47,18 @@ jobs:
       DATABASE_USERNAME: test
       DATABASE_PASSWORD: test
       REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret-with-at-least-32-characters
+      JWT_EXPIRATION: 900000
       PGPASSWORD: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
           cache: maven
 
       - name: Install PostgreSQL client
@@ -60,8 +67,32 @@ jobs:
       - name: Apply database schema
         run: psql -h localhost -U test -d frigus_test -f db/script.sql
 
-      - name: Grant execute permission for mvnw
+      - name: Grant execute permission for Maven Wrapper
         run: chmod +x mvnw
 
-      - name: Build and Test
+      - name: Run tests
         run: ./mvnw clean verify -B
+
+  manifests:
+    name: Validate Deployment Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate deploy script syntax
+        run: bash -n deploy/aws/deploy.sh
+
+      - name: Validate Kubernetes manifests
+        run: kubectl kustomize deploy/k8s >/dev/null
+
+  docker:
+    name: Build Docker Image
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t frigus-core-api:ci-${{ github.sha }} .
