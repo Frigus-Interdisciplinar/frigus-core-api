@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -64,6 +65,12 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
 
         Stock stock = mapper.toEntity(dto);
         stock.setGroup(group);
+        if (stock.getCreatedAt() == null) {
+            stock.setCreatedAt(Instant.now());
+        }
+        if (stock.getUpdatedAt() == null) {
+            stock.setUpdatedAt(Instant.now());
+        }
         return mapToDto(repository.save(stock));
     }
 
@@ -78,6 +85,7 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
 
         stock.setGroup(targetGroup);
         stock.setName(dto.getName().trim());
+        stock.setUpdatedAt(Instant.now());
         return mapToDto(repository.save(stock));
     }
 

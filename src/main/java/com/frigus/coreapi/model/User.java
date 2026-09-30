@@ -61,7 +61,7 @@ public class User {
     @Column(name = "role", nullable = false, columnDefinition = "user_role_enum not null")
     private Role role;
 
-    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    @OneToOne(mappedBy = "user", fetch = FetchType.EAGER)
     private Subscription subscription;
 
 
