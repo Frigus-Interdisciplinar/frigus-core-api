@@ -1,0 +1,29 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: frigus-cluster
+  region: us-east-1
+
+iam:
+  withOIDC: false
+  serviceRoleARN: arn:aws:iam::240495665702:role/LabRole
+
+autoModeConfig:
+  enabled: false
+
+vpc:
+  nat:
+    gateway: Disable
+
+managedNodeGroups:
+  - name: core-api-nodes
+    instanceType: t3.medium
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 2
+    volumeSize: 20
+    iam:
+      instanceRoleARN: arn:aws:iam::240495665702:role/LabRole
+    labels:
+      workload: core-api

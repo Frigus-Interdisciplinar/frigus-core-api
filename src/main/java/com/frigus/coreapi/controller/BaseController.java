@@ -20,7 +20,6 @@ public abstract class BaseController<
         this.service = service;
     }
 
-    @GetMapping
     public Page<TResponseDto> findAll(Pageable pageable) {
         return service.findAll(pageable);
     }

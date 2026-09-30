@@ -31,5 +31,13 @@ public class UserGroup {
     @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
+    @NotNull
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    private java.time.Instant createdAt;
 
+    @NotNull
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private java.time.Instant updatedAt;
 }

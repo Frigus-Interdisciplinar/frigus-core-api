@@ -6,6 +6,8 @@ import com.frigus.coreapi.service.UserService;
 import jakarta.validation.Valid;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -17,6 +19,12 @@ public class UserController extends BaseController<User, UUID, UserRegisterReque
 
     protected UserController(UserService service) {
         super(service);
+    }
+
+    @GetMapping
+    @Override
+    public Page<UserResponseDto> findAll(Pageable pageable) {
+        return super.findAll(pageable);
     }
 
     @GetMapping("/search")

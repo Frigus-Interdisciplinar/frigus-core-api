@@ -42,7 +42,36 @@ public class RecipeIngredient {
     @NotNull
     @ColumnDefault("true")
     @Column(name = "required", nullable = false)
-    private Boolean required;
+    @Builder.Default
+    private Boolean required = true;
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    @Builder.Default
+    private java.time.Instant createdAt = java.time.Instant.now();
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    @Builder.Default
+    private java.time.Instant updatedAt = java.time.Instant.now();
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = java.time.Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = java.time.Instant.now();
+        }
+        if (required == null) {
+            required = true;
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = java.time.Instant.now();
+    }
 }

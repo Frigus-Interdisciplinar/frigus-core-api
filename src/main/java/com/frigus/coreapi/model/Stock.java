@@ -29,5 +29,16 @@ public class Stock {
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
+    @NotNull
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    private java.time.Instant createdAt;
 
+    @NotNull
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private java.time.Instant updatedAt;
+
+    @Column(name = "deleted_at")
+    private java.time.Instant deletedAt;
 }

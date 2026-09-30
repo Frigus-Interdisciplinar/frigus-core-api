@@ -22,6 +22,11 @@ public class Group {
     private UUID id;
 
     @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @NotNull
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
@@ -33,5 +38,11 @@ public class Group {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

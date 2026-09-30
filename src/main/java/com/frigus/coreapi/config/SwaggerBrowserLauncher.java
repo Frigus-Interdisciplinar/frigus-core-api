@@ -20,6 +20,13 @@ public class SwaggerBrowserLauncher {
             return;
         }
 
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        boolean isHeadless = Boolean.parseBoolean(System.getProperty("java.awt.headless", "false"));
+
+        if (!isWindows || isHeadless) {
+            return;
+        }
+
         String swaggerUrl =
                 "http://localhost:" + serverPort + "/swagger-ui/index.html";
 

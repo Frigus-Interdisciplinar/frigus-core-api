@@ -148,26 +148,6 @@ CREATE TYPE transaction_status_enum AS ENUM(
 -- ============================================================
 -- TABLES
 -- ============================================================
-CREATE TABLE groups (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR NOT NULL,
-  banner_picture TEXT,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TIMESTAMP
-);
-
-CREATE TABLE recipes (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL,
-  description TEXT,
-  instructions TEXT,
-  domestic_only BOOLEAN NOT NULL DEFAULT TRUE,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR NOT NULL,
@@ -179,6 +159,28 @@ CREATE TABLE users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
+);
+
+CREATE TABLE groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL,
+  name VARCHAR NOT NULL,
+  banner_picture TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP,
+  CONSTRAINT fk_groups_owner_id_users FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE recipes (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR NOT NULL,
+  description TEXT,
+  instructions TEXT,
+  domestic_only BOOLEAN NOT NULL DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE stocks (
@@ -478,6 +480,8 @@ CREATE INDEX idx_products_category ON products (category);
 
 CREATE INDEX idx_products_storage_place ON products (storage_place);
 
+CREATE UNIQUE INDEX uq_products_name_ci ON products (LOWER(name));
+
 CREATE INDEX idx_stock_products_product ON stock_products (product_id);
 
 CREATE INDEX idx_stock_products_stock ON stock_products (stock_id);
@@ -570,6 +574,12 @@ WHERE
 CREATE INDEX idx_plans_deleted_at ON plans (deleted_at);
 
 CREATE INDEX idx_groups_deleted_at ON groups (deleted_at);
+
+CREATE INDEX idx_groups_owner ON groups (owner_id);
+
+CREATE UNIQUE INDEX uq_groups_one_active_per_owner ON groups (owner_id)
+WHERE
+  deleted_at IS NULL;
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS
@@ -675,3 +685,198 @@ VALUES
     'MONTHLY',
     TRUE
   );
+
+-- ============================================================
+-- PRODUCT & STOCK FUNCTIONS & TRIGGERS
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION fn_compute_product_status_enum(
+    p_expire_date DATE,
+    p_warn_days   INTEGER DEFAULT 3
+) RETURNS product_status_enum
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE
+        WHEN p_expire_date < CURRENT_DATE THEN 'EXPIRED'::product_status_enum
+        WHEN p_expire_date <= CURRENT_DATE + p_warn_days THEN 'NEAR_EXPIRATION'::product_status_enum
+        ELSE 'FRESH'::product_status_enum
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_compute_product_status(
+    p_expire_date DATE,
+    p_warn_days   INTEGER DEFAULT 3
+) RETURNS VARCHAR
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE fn_compute_product_status_enum(p_expire_date, p_warn_days)
+        WHEN 'EXPIRED'::product_status_enum         THEN 'Vencido'
+        WHEN 'NEAR_EXPIRATION'::product_status_enum THEN 'Próximo do vencimento'
+        WHEN 'FRESH'::product_status_enum           THEN 'Fresco'
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION trg_fn_stock_products_set_status()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.product_status := fn_compute_product_status_enum(NEW.expire_date);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_stock_products_set_status ON stock_products;
+CREATE TRIGGER trg_stock_products_set_status
+    BEFORE INSERT OR UPDATE OF expire_date ON stock_products
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_stock_products_set_status();
+
+CREATE OR REPLACE FUNCTION trg_fn_stock_movements_apply()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_delta        INTEGER;
+    v_new_quantity INTEGER;
+BEGIN
+    v_delta := CASE NEW.movement_type
+        WHEN 'IN'  THEN NEW.quantity
+        WHEN 'OUT' THEN -NEW.quantity
+        ELSE NEW.quantity
+    END;
+
+    UPDATE stock_products
+       SET quantity = quantity + v_delta
+     WHERE id = NEW.stock_product_id
+     RETURNING quantity INTO v_new_quantity;
+
+    IF v_new_quantity < 0 THEN
+        RAISE EXCEPTION 'stock_movements: quantidade resultante negativa para stock_product_id %', NEW.stock_product_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_stock_movements_apply ON stock_movements;
+CREATE TRIGGER trg_stock_movements_apply
+    AFTER INSERT ON stock_movements
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_stock_movements_apply();
+
+CREATE OR REPLACE FUNCTION fn_low_stock_products(p_stock_id INTEGER)
+RETURNS TABLE (
+    stock_product_id INTEGER,
+    product_id       INTEGER,
+    product_name     VARCHAR,
+    quantity         INTEGER,
+    minimal_quantity INTEGER
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT sp.id, sp.product_id, p.name, sp.quantity, sp.minimal_quantity
+    FROM stock_products sp
+    JOIN products p ON p.id = sp.product_id
+    WHERE sp.stock_id = p_stock_id
+      AND sp.minimal_quantity IS NOT NULL
+      AND sp.quantity < sp.minimal_quantity;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_suggest_recipes(p_stock_id INTEGER)
+RETURNS TABLE (
+    recipe_id           INTEGER,
+    matched_ingredients  INTEGER,
+    missing_ingredients  INTEGER,
+    nearest_expire_date  DATE,
+    score                NUMERIC
+)
+LANGUAGE sql
+STABLE
+AS $$
+    WITH ingredient_match AS (
+        SELECT
+            ri.recipe_id,
+            ri.product_id,
+            bool_or(sp.id IS NOT NULL)  AS in_stock,
+            MIN(sp.expire_date)          AS earliest_expire_date
+        FROM recipe_ingredients ri
+        LEFT JOIN stock_products sp
+            ON sp.product_id = ri.product_id
+           AND sp.stock_id = p_stock_id
+        GROUP BY ri.recipe_id, ri.product_id
+    )
+    SELECT
+        recipe_id,
+        COUNT(*) FILTER (WHERE in_stock)::INTEGER      AS matched_ingredients,
+        COUNT(*) FILTER (WHERE NOT in_stock)::INTEGER  AS missing_ingredients,
+        MIN(earliest_expire_date)                       AS nearest_expire_date,
+        ROUND(COUNT(*) FILTER (WHERE in_stock)::NUMERIC / NULLIF(COUNT(*), 0), 2) AS score
+    FROM ingredient_match
+    GROUP BY recipe_id;
+$$;
+
+-- ============================================================
+-- CONVERSATION & SHOPPING LIST FUNCTIONS & PROCEDURES
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION fn_pair_key(p_user_a UUID, p_user_b UUID)
+RETURNS VARCHAR
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT LEAST(p_user_a::TEXT, p_user_b::TEXT) || ':' || GREATEST(p_user_a::TEXT, p_user_b::TEXT);
+$$;
+
+CREATE OR REPLACE FUNCTION trg_fn_conversation_participants_pair_key()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_conversation_type conversation_type_enum;
+    v_participants       UUID[];
+BEGIN
+    SELECT conversation_type INTO v_conversation_type
+    FROM conversations
+    WHERE id = NEW.conversation_id;
+
+    IF v_conversation_type = 'PRIVATE' THEN
+        SELECT array_agg(user_id ORDER BY user_id) INTO v_participants
+        FROM conversation_participants
+        WHERE conversation_id = NEW.conversation_id;
+
+        IF array_length(v_participants, 1) = 2 THEN
+            UPDATE conversations
+               SET pair_key = fn_pair_key(v_participants[1], v_participants[2])
+             WHERE id = NEW.conversation_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_conversation_participants_pair_key ON conversation_participants;
+CREATE TRIGGER trg_conversation_participants_pair_key
+    AFTER INSERT ON conversation_participants
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_fn_conversation_participants_pair_key();
+
+CREATE OR REPLACE PROCEDURE sp_close_shopping_list(p_list_id UUID)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM shopping_list_products
+        WHERE list_id = p_list_id
+          AND status NOT IN ('PURCHASED', 'REMOVED')
+    ) THEN
+        UPDATE shopping_lists
+           SET status = 'COMPLETED'
+         WHERE id = p_list_id;
+    END IF;
+END;
+$$;
