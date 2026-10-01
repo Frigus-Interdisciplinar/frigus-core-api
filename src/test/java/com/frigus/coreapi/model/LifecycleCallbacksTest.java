@@ -31,4 +31,28 @@ class LifecycleCallbacksTest {
         subscription.preUpdate();
         assertThat(subscription.getUpdatedAt()).isAfterOrEqualTo(beforeUpdate);
     }
+
+    @Test
+    void initializesShoppingListDefaultsAndUpdatesTimestamp() {
+        ShoppingList list = ShoppingList.builder().build();
+        list.prePersist();
+        assertThat(list.getStatus()).isEqualTo(com.frigus.coreapi.enums.ListStatus.OPEN);
+        assertThat(list.getDate()).isNotNull();
+        assertThat(list.getCreatedAt()).isNotNull();
+        Instant beforeUpdate = list.getUpdatedAt();
+        list.preUpdate();
+        assertThat(list.getUpdatedAt()).isAfterOrEqualTo(beforeUpdate);
+    }
+
+    @Test
+    void initializesShoppingListProductDefaultsAndUpdatesTimestamp() {
+        ShoppingListProduct item = ShoppingListProduct.builder().build();
+        item.prePersist();
+        assertThat(item.getStatus()).isEqualTo(com.frigus.coreapi.enums.ProductListStatus.PENDING);
+        assertThat(item.getQuantity()).isEqualTo(1);
+        assertThat(item.getCreatedAt()).isNotNull();
+        Instant beforeUpdate = item.getUpdatedAt();
+        item.preUpdate();
+        assertThat(item.getUpdatedAt()).isAfterOrEqualTo(beforeUpdate);
+    }
 }

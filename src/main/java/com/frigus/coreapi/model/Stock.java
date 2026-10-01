@@ -41,4 +41,19 @@ public class Stock {
 
     @Column(name = "deleted_at")
     private java.time.Instant deletedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = java.time.Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = java.time.Instant.now();
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = java.time.Instant.now();
+    }
 }
