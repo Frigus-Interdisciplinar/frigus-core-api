@@ -1,6 +1,7 @@
 package com.frigus.coreapi.integration;
 
 import com.frigus.coreapi.model.User;
+import com.frigus.coreapi.client.FrigusAiClient;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.security.TokenProvider;
 import com.frigus.coreapi.service.RefreshTokenService;
@@ -15,6 +16,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -27,6 +29,8 @@ import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -43,7 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Real filters, controllers, services, repositories and production SQL; only Redis boundaries are mocked. */
 @Testcontainers
-@SpringBootTest(properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "server.address=127.0.0.1",
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
         "spring.jpa.open-in-view=false", "app.swagger.open-on-startup=false",
@@ -51,8 +56,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class ApiIntegrationTest {
     @Container
+    static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379);
+
+    @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("frigus_test")
+            .withStartupTimeout(java.time.Duration.ofMinutes(3))
             .withCopyFileToContainer(MountableFile.forHostPath("db/script.sql"),
                     "/docker-entrypoint-initdb.d/001-schema.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
@@ -64,6 +74,7 @@ class ApiIntegrationTest {
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
         properties.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+        properties.add("spring.data.redis.url", () -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
     }
 
     @Autowired WebApplicationContext context;
@@ -73,6 +84,8 @@ class ApiIntegrationTest {
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper json;
     @Autowired javax.sql.DataSource dataSource;
+    @Autowired FrigusAiClient aiClient;
+    @LocalServerPort int port;
     @MockitoBean RefreshTokenService refreshTokens;
     @MockitoBean TransactionQueueProducer queue;
     // Remove scheduled consumers so no background task touches Redis or mutates test data.
@@ -441,6 +454,100 @@ class ApiIntegrationTest {
                 VALUES ('negative-amount',?,(SELECT id FROM plans WHERE plan_code='FREE'),-1,'PIX')
                 """, owner.getId())).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThat(count("transactions")).isEqualTo(1);
+    }
+
+    @Test
+    void embeddedHttpServerServesCatalogAndRequiresAuthenticationForProfile() throws Exception {
+        var client = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
+        var catalog = client.send(java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("http://127.0.0.1:" + port + "/products"))
+                        .timeout(java.time.Duration.ofSeconds(10)).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(catalog.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(catalog.body()).get("content").get(0).get("id").asInt()).isEqualTo(productId);
+
+        var profileUri = java.net.URI.create("http://127.0.0.1:" + port + "/profile");
+        assertThat(client.send(java.net.http.HttpRequest.newBuilder(profileUri)
+                        .timeout(java.time.Duration.ofSeconds(10)).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+        var profile = client.send(java.net.http.HttpRequest.newBuilder(profileUri)
+                        .timeout(java.time.Duration.ofSeconds(10))
+                        .header("Authorization", "Bearer " + tokens.generateAccessToken(owner)).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(profile.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(profile.body()).get("id").asText()).isEqualTo(owner.getId().toString());
+    }
+
+    @Test
+    void recipeCrudPersistsChangesAndDeleteOnlyDeactivatesRecipe() throws Exception {
+        var created = body(as(post("/recipes"), owner).contentType("application/json")
+                .content("{\"name\":\"Soup\",\"description\":\"Dinner\",\"instructions\":\"Cook\"}"), 201);
+        int recipeId = created.get("id").asInt();
+        assertThat(created.get("domesticOnly").asBoolean()).isTrue();
+        assertThat(created.get("active").asBoolean()).isTrue();
+        assertThat(Instant.parse(created.get("createdAt").asText())).isNotNull();
+        var persisted = body(as(get("/recipes/{id}", recipeId), owner), 200);
+        assertThat(persisted.get("name").asText()).isEqualTo("Soup");
+        assertThat(persisted.get("instructions").asText()).isEqualTo("Cook");
+        mvc.perform(as(put("/recipes/{id}", recipeId), owner).contentType("application/json")
+                        .content("{\"name\":\"Salad\",\"description\":\"Lunch\",\"instructions\":\"Mix\",\"domesticOnly\":false,\"active\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Salad"))
+                .andExpect(jsonPath("$.domesticOnly").value(false)).andExpect(jsonPath("$.createdAt").value(persisted.get("createdAt").asText()));
+        mvc.perform(as(delete("/recipes/{id}", recipeId), owner)).andExpect(status().isOk());
+        assertThat(count("recipes")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT active FROM recipes WHERE id=?", Boolean.class, recipeId)).isFalse();
+        mvc.perform(as(get("/recipes/{id}", recipeId), owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false)).andExpect(jsonPath("$.name").value("Salad"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"name\":null}", "{\"name\":\"   \"}"})
+    void invalidRecipeNameReturnsBadRequestWithoutPersisting(String payload) throws Exception {
+        mvc.perform(as(post("/recipes"), owner).contentType("application/json").content(payload))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+        assertThat(count("recipes")).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "PUT", "DELETE"})
+    void missingRecipeReturnsNotFound(String method) throws Exception {
+        var request = request(org.springframework.http.HttpMethod.valueOf(method), "/recipes/999999");
+        if (method.equals("PUT")) {
+            request.contentType("application/json").content("{\"name\":\"Missing\"}");
+        }
+        mvc.perform(as(request, owner)).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+        assertThat(count("recipes")).isZero();
+    }
+
+    @Test
+    void anonymousRecipeCreationIsForbiddenWithoutPersisting() throws Exception {
+        mvc.perform(post("/recipes").contentType("application/json").content("{\"name\":\"Soup\"}"))
+                .andExpect(status().isForbidden());
+        assertThat(count("recipes")).isZero();
+    }
+
+    @Test
+    void unavailableAiReturnsSafeHttp503WithoutPersistingRecipeOrSuggestion() throws Exception {
+        var original = (org.springframework.web.client.RestClient)
+                org.springframework.test.util.ReflectionTestUtils.getField(aiClient, "restClient");
+        var builder = original.mutate().baseUrl("http://ai.example.test");
+        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/chats/existing/messages"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
+        org.springframework.test.util.ReflectionTestUtils.setField(aiClient, "restClient", builder.build());
+        try {
+            var response = mvc.perform(as(post("/ai/recipes/chat"), owner).contentType("application/json")
+                            .content("{\"message\":\"Dinner?\",\"stockId\":" + stockId + ",\"sessionId\":\"existing\"}"))
+                    .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(response).doesNotContain("ai.example.test", "stackTrace", "RestClient", "X-API-Key");
+            assertThat(count("recipes")).isZero();
+            assertThat(count("recipe_suggestions")).isZero();
+            server.verify();
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(aiClient, "restClient", original);
+        }
     }
 
     private User user(String email, String role) {
