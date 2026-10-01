@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
 
 import java.util.UUID;
+import java.time.Instant;
 
 @Service
 public class StockService extends BaseService<Stock, Integer, StockCreateRequestDto, StockResponseDto, StockMapper, StockRepository> {
@@ -64,6 +65,9 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
 
         Stock stock = mapper.toEntity(dto);
         stock.setGroup(group);
+        Instant now = Instant.now();
+        stock.setCreatedAt(now);
+        stock.setUpdatedAt(now);
         return mapToDto(repository.save(stock));
     }
 

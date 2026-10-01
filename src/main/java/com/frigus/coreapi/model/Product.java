@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -30,10 +32,12 @@ public class Product {
 
     @Column(name = "category", columnDefinition = "category_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private Category category;
 
     @Column(name = "storage_place", columnDefinition = "storage_place_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private StoragePlace storagePlace;
 
     @NotNull
@@ -42,6 +46,7 @@ public class Product {
 
     @NotNull
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(name = "unit_of_measure", nullable = false, columnDefinition = "unit_of_measure_enum")
     private UnitOfMeasure unitOfMeasure;
 
