@@ -34,7 +34,7 @@ public class Subscription {
     private User user;
 
     @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "plan_id", nullable = false)
     private Plan plan;
 

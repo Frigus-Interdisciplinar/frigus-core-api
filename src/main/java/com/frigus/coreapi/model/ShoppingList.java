@@ -8,6 +8,9 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -39,6 +42,7 @@ public class ShoppingList {
 
     @Column(name = "status", columnDefinition = "list_status_enum not null")
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     private ListStatus status;
 
     @NotNull
@@ -46,5 +50,29 @@ public class ShoppingList {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+        if (date == null) {
+            date = LocalDate.now();
+        }
+        if (status == null) {
+            status = ListStatus.OPEN;
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }

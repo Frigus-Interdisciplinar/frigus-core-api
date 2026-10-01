@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
+@Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class GroupService {
 
