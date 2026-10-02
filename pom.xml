@@ -15,6 +15,7 @@
 
     <properties>
         <java.version>17</java.version>
+        <maven.build.directory>target</maven.build.directory>
         <aws.sdk.version>2.31.55</aws.sdk.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <jackson-annotations.version>2.21</jackson-annotations.version>
@@ -112,6 +113,16 @@
             <artifactId>spring-boot-starter-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
@@ -132,6 +143,7 @@
     </dependencyManagement>
 
     <build>
+        <directory>${maven.build.directory}</directory>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

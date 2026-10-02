@@ -47,6 +47,37 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class GroupServiceTest {
+    @Test
+    void freePlanCannotCreateGroupOrAnyRelatedRecords() {
+        when(planLimitsResolverService.resolveLimitsForCurrentUser())
+                .thenReturn(PlanLimitsDto.builder().maxGroupsCreated(0).build());
+        assertThatThrownBy(() -> groupService.createGroup(GroupCreateRequestDto.builder().name("Family").build()))
+                .isInstanceOf(com.frigus.coreapi.exception.BadRequestException.class)
+                .hasMessage("Criação de grupo não permitida");
+        org.mockito.Mockito.verifyNoInteractions(groupRepository, userGroupRepository, conversationRepository, conversationParticipantRepository);
+    }
+
+    @Test
+    void userAlreadyInActiveGroupCannotCreateAnotherGroup() {
+        when(planLimitsResolverService.resolveLimitsForCurrentUser())
+                .thenReturn(PlanLimitsDto.builder().maxGroupsCreated(1).build());
+        when(userGroupRepository.existsByUserIdAndGroupDeletedAtIsNull(currentUser.getId())).thenReturn(true);
+        assertThatThrownBy(() -> groupService.createGroup(GroupCreateRequestDto.builder().name("Family").build()))
+                .isInstanceOf(ConflictException.class).hasMessage("Usuário já pertence a um grupo");
+        org.mockito.Mockito.verifyNoInteractions(groupRepository, conversationRepository, conversationParticipantRepository);
+    }
+
+    @Test
+    void existingActiveGroupOwnerCannotCreateAnotherGroup() {
+        when(planLimitsResolverService.resolveLimitsForCurrentUser())
+                .thenReturn(PlanLimitsDto.builder().maxGroupsCreated(1).build());
+        when(groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(true);
+        assertThatThrownBy(() -> groupService.createGroup(GroupCreateRequestDto.builder().name("Family").build()))
+                .isInstanceOf(ConflictException.class).hasMessage("Limite de grupos atingido");
+        org.mockito.Mockito.verify(groupRepository, org.mockito.Mockito.never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(conversationRepository, conversationParticipantRepository);
+    }
+
 
     @Mock
     private GroupRepository groupRepository;

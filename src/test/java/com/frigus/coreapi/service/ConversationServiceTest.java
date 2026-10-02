@@ -42,6 +42,35 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationServiceTest {
+    @Test
+    void rejectsPrivateConversationWithSelfBeforeQueryingOrWriting() {
+        var request = CreatePrivateConversationRequestDto.builder().targetUserId(currentUser.getId()).build();
+        assertThatThrownBy(() -> conversationService.getOrCreatePrivateConversation(request))
+                .isInstanceOf(BadRequestException.class).hasMessage("Conversa inválida");
+        verifyNoInteractions(userRepository, conversationRepository, conversationParticipantRepository);
+    }
+
+    @Test
+    void rejectsAddingParticipantToPrivateConversationWithoutWriting() {
+        UUID id = UUID.randomUUID();
+        when(conversationParticipantRepository.isUserActiveParticipant(id, currentUser.getId())).thenReturn(true);
+        when(conversationRepository.findById(id)).thenReturn(Optional.of(
+                Conversation.builder().id(id).conversationType(ConversationType.PRIVATE).build()));
+        assertThatThrownBy(() -> conversationService.addParticipantToGroupConversation(id,
+                AddParticipantRequestDto.builder().userId(groupMemberUser.getId()).build()))
+                .isInstanceOf(BadRequestException.class).hasMessage("Operação inválida");
+        verify(conversationParticipantRepository, never()).save(any());
+        verifyNoInteractions(userRepository, userGroupRepository);
+    }
+
+    @Test
+    void rejectsUnauthenticatedConversationListingBeforeQuerying() {
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> conversationService.listMyConversations())
+                .isInstanceOf(com.frigus.coreapi.exception.UnauthorizedException.class);
+        verifyNoInteractions(conversationRepository, conversationParticipantRepository);
+    }
+
 
     @Mock
     private ConversationRepository conversationRepository;

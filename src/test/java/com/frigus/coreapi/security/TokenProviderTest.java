@@ -9,6 +9,22 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TokenProviderTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"expired", "issuer", "signature"})
+    void rejectsExpiredWrongIssuerAndWrongSignatureTokens(String scenario) {
+        String secret = "test-signing-secret-with-at-least-32-characters";
+        TokenProvider provider = new TokenProvider();
+        ReflectionTestUtils.setField(provider, "secret", secret);
+        String token = com.auth0.jwt.JWT.create()
+                .withSubject(UUID.randomUUID().toString())
+                .withIssuer(scenario.equals("issuer") ? "another-api" : "frigus")
+                .withExpiresAt(java.time.Instant.now().plusSeconds(scenario.equals("expired") ? -60 : 600))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256(scenario.equals("signature") ? "different-secret" : secret));
+
+        assertThat(provider.validateAccessToken(token)).isNull();
+        assertThat(provider.validateAccessTokenAndGetSubject(token)).isNull();
+    }
+
     @Test
     void generatesAndValidatesTokensAndRejectsInvalidValues() {
         TokenProvider provider = new TokenProvider();

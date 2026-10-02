@@ -85,6 +85,9 @@ public class TransactionService {
 
         if (existingTransaction.isPresent()) {
             Transaction tx = existingTransaction.get();
+            if (!tx.getUser().getId().equals(currentUser.getId())) {
+                throw new ForbiddenException("Transação não autorizada", "A chave de idempotência pertence a outro usuário");
+            }
 
             if (tx.getStatus() == TransactionStatus.PENDING || tx.getStatus() == TransactionStatus.APPROVED || tx.getStatus() == TransactionStatus.PROCESSING) {
                 return transactionMapper.toDto(tx);
