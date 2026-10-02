@@ -33,6 +33,10 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
                         "Produto do estoque não encontrado",
                         "Nenhum produto do estoque foi encontrado com o ID informado"));
 
+        if (dto.getQuantity() <= 0 || dto.getQuantity() > stockProduct.getQuantity()) {
+            throw new IllegalArgumentException("A quantidade é inválida");
+        }
+        stockProduct.setQuantity(stockProduct.getQuantity() - dto.getQuantity());
         Discard discard = mapper.toEntity(dto);
         discard.setStockProduct(stockProduct);
         discard.setDate(Instant.now());
