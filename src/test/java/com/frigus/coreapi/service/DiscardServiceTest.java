@@ -42,9 +42,10 @@ class DiscardServiceTest {
     void shouldCreateDiscardUsingExistingStockProduct() {
         DiscardCreateRequestDto request = DiscardCreateRequestDto.builder()
                 .stockProductId(12)
+                .quantity(2)
                 .reason("Produto vencido")
                 .build();
-        StockProduct stockProduct = StockProduct.builder().id(12).build();
+        StockProduct stockProduct = StockProduct.builder().id(12).quantity(10).build();
         Discard discard = Discard.builder().reason(request.getReason()).build();
         Discard savedDiscard = Discard.builder()
                 .id(3)
@@ -62,6 +63,7 @@ class DiscardServiceTest {
 
         assertEquals(3, result.getId());
         assertEquals(12, result.getStockProductId());
+        assertEquals(8, stockProduct.getQuantity());
         assertEquals(stockProduct, discard.getStockProduct());
         assertNotNull(discard.getDate());
         verify(discardRepository).save(discard);
@@ -71,6 +73,7 @@ class DiscardServiceTest {
     void shouldRejectCreateWhenStockProductDoesNotExist() {
         DiscardCreateRequestDto request = DiscardCreateRequestDto.builder()
                 .stockProductId(999)
+                .quantity(2)
                 .reason("Produto vencido")
                 .build();
         when(stockProductRepository.findById(999)).thenReturn(Optional.empty());

@@ -39,6 +39,7 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
         stockProduct.setQuantity(stockProduct.getQuantity() - dto.getQuantity());
         Discard discard = mapper.toEntity(dto);
         discard.setStockProduct(stockProduct);
+        
         discard.setDate(Instant.now());
 
         return mapper.toDto(repository.save(discard));
