@@ -1,11 +1,16 @@
 package com.frigus.coreapi.repository;
 
 import com.frigus.coreapi.enums.ProductListStatus;
+import com.frigus.coreapi.enums.ListStatus;
+import com.frigus.coreapi.model.ShoppingList;
 import com.frigus.coreapi.model.ShoppingListProduct;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -32,4 +37,12 @@ public interface ShoppingListProductRepository extends BaseRepository<ShoppingLi
     boolean existsByListIdAndStatusNotIn(UUID listId, Collection<ProductListStatus> statuses);
 
     void deleteByListId(UUID listId);
+
+    @Query("select distinct slp.list from ShoppingListProduct slp "
+            + "where slp.status = :status and slp.createdAt <= :createdOnOrBefore "
+            + "and slp.list.status = :listStatus")
+    List<ShoppingList> findListsWithPendingProductsCreatedOnOrBefore(
+            @Param("status") ProductListStatus status,
+            @Param("listStatus") ListStatus listStatus,
+            @Param("createdOnOrBefore") Instant createdOnOrBefore);
 }
