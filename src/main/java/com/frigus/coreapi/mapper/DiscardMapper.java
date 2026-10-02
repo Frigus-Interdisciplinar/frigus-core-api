@@ -15,6 +15,7 @@ public class DiscardMapper implements BaseMapper<Discard, DiscardResponseDto, Di
                 .stockProductId(discard.getStockProduct().getId())
                 .reason(discard.getReason())
                 .date(discard.getDate())
+                .quantity(discard.getQuantity())
                 .build();
     }
 
@@ -22,6 +23,7 @@ public class DiscardMapper implements BaseMapper<Discard, DiscardResponseDto, Di
     public Discard toEntity(DiscardCreateRequestDto dto) {
         return Discard.builder()
                 .reason(dto.getReason())
+                .quantity(dto.getQuantity())
                 .build();
     }
 }
