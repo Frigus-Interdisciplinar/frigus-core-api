@@ -6,6 +6,7 @@ import com.frigus.coreapi.dto.group.GroupResponseDto;
 import com.frigus.coreapi.dto.group.GroupUpdateRequestDto;
 import com.frigus.coreapi.dto.plan.PlanLimitsDto;
 import com.frigus.coreapi.enums.ConversationType;
+import com.frigus.coreapi.enums.NotificationType;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.ConflictException;
 import com.frigus.coreapi.exception.ForbiddenException;
@@ -47,6 +48,7 @@ public class GroupService {
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final GroupMapper groupMapper;
     private final PlanLimitsResolverService planLimitsResolverService;
+    private final NotificationService notificationService;
 
     public List<GroupResponseDto> listMyGroups() {
         User currentUser = requireCurrentUser();
@@ -255,6 +257,14 @@ public class GroupService {
                 conversationParticipantRepository.save(participant);
             }
         }
+
+        notificationService.notifyDomesticOrCommercialGroup(
+                group,
+                NotificationType.GROUP_MEMBER_JOINED,
+                "Novo membro no grupo",
+                targetUser.getName() + " entrou no grupo " + group.getName() + ".",
+                targetUser.getId().toString(),
+                "group-member-joined:" + group.getId() + ":" + targetUser.getId());
 
         List<UserGroup> members = userGroupRepository.findByGroupId(groupId);
         UUID defaultConvId = groupConversations.stream().findFirst().map(Conversation::getId).orElse(null);

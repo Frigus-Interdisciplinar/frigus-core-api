@@ -1,0 +1,11 @@
+package com.frigus.coreapi.enums;
+
+public enum NotificationType {
+    PRODUCT_NEAR_EXPIRATION,
+    GROUP_MEMBER_JOINED,
+    SHOPPING_LIST_PRODUCT_ADDED,
+    SHOPPING_LIST_REMINDER,
+    LOW_STOCK,
+    OUT_OF_STOCK,
+    AD_CLICK_MILESTONE
+}

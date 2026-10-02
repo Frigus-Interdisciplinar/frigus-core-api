@@ -100,6 +100,9 @@ class GroupServiceTest {
     @Mock
     private PlanLimitsResolverService planLimitsResolverService;
 
+    @Mock
+    private NotificationService notificationService;
+
     @InjectMocks
     private GroupService groupService;
 
