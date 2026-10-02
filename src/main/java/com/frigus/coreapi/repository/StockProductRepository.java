@@ -21,6 +21,8 @@ public interface StockProductRepository extends BaseRepository<StockProduct, Int
 
     List<StockProduct> findByStockIdAndExpireDateLessThanEqual(Integer stockId, LocalDate date);
 
+    List<StockProduct> findByExpireDateBetween(LocalDate startDate, LocalDate endDate);
+
     boolean existsByProductIdAndStockIdAndExpireDate(Integer productId, Integer stockId, LocalDate expireDate);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
