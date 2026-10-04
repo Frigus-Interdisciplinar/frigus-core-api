@@ -7,5 +7,6 @@ public enum NotificationType {
     SHOPPING_LIST_REMINDER,
     LOW_STOCK,
     OUT_OF_STOCK,
+    WEEKLY_SUMMARY,
     AD_CLICK_MILESTONE
 }

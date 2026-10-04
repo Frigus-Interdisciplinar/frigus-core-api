@@ -39,7 +39,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     String userId = decodedJWT.getSubject();
                     User user = userRepository.findById(UUID.fromString(userId)).orElse(null);
 
-                    if (user != null) {
+                    if (user != null && user.getDeletedAt()==null && tokenVersion(decodedJWT)==user.getTokenVersion()) {
                         var authorities = List.of(
                                 new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
                         );
@@ -76,5 +76,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         }
 
         return null;
+    }
+
+    private int tokenVersion(DecodedJWT jwt) {
+        var claim=jwt.getClaim("tokenVersion");
+        Integer version=claim==null ? null : claim.asInt();
+        return version==null ? 0 : version;
     }
 }

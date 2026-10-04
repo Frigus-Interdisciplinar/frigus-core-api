@@ -91,6 +91,7 @@ public class PlanLimitsResolverService {
                 allowMoneySaving = true;
                 break;
             case COMMERCIAL:
+                hasMonthlyReport = true;
                 maxGroupsCreated = 1;
                 maxGroupMembers = 20;
                 maxStocks = 10;

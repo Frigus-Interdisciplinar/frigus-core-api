@@ -15,17 +15,25 @@ import java.util.Optional;
 
 @Repository
 public interface StockProductRepository extends BaseRepository<StockProduct, Integer> {
-    Page<StockProduct> findByStockId(Integer stockId, Pageable pageable);
+    @Query("select sp from StockProduct sp join fetch sp.product where sp.stock.id=:stockId and sp.deletedAt is null and sp.stock.deletedAt is null")
+    Page<StockProduct> findByStockId(@Param("stockId") Integer stockId, Pageable pageable);
 
-    List<StockProduct> findByStockId(Integer stockId);
+    @Query("select sp from StockProduct sp where sp.stock.id=:stockId and sp.deletedAt is null and sp.stock.deletedAt is null")
+    List<StockProduct> findByStockId(@Param("stockId") Integer stockId);
 
     List<StockProduct> findByStockIdAndExpireDateLessThanEqual(Integer stockId, LocalDate date);
 
-    List<StockProduct> findByExpireDateBetween(LocalDate startDate, LocalDate endDate);
+    @Query("select sp from StockProduct sp where sp.expireDate between :startDate and :endDate and sp.deletedAt is null and sp.quantity>0 and sp.stock.deletedAt is null and sp.stock.group.deletedAt is null")
+    List<StockProduct> findByExpireDateBetween(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     boolean existsByProductIdAndStockIdAndExpireDate(Integer productId, Integer stockId, LocalDate expireDate);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select stockProduct from StockProduct stockProduct where stockProduct.id = :id")
+    @Query("select stockProduct from StockProduct stockProduct where stockProduct.id = :id and stockProduct.deletedAt is null and stockProduct.stock.deletedAt is null")
     Optional<StockProduct> findByIdForUpdate(@Param("id") Integer id);
+    @Query("select sp from StockProduct sp join fetch sp.product p join fetch sp.stock s where s.group.id=:groupId and s.deletedAt is null and sp.deletedAt is null")
+    List<StockProduct> findActiveByGroup(@Param("groupId") java.util.UUID groupId);
+    @Query("select sp from StockProduct sp where sp.stock.id=:stockId and sp.stock.deletedAt is null and sp.deletedAt is null")
+    List<StockProduct> findActiveByStock(@Param("stockId") Integer stockId);
+    boolean existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(Integer productId,Integer stockId,LocalDate expireDate,String batch);
 }

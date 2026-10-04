@@ -48,7 +48,7 @@ class StockProductServiceTest {
                 .build();
         StockProductService service = new StockProductService(
                 stockProductRepository,
-                new StockProductMapper(),
+                new StockProductMapper(new com.frigus.coreapi.mapper.ProductMapper()),
                 stockRepository,
                 productRepository,
                 groupAccessService,
@@ -56,7 +56,7 @@ class StockProductServiceTest {
 
         when(stockRepository.findById(3)).thenReturn(Optional.of(stock));
         when(productRepository.findById(7)).thenReturn(Optional.of(product));
-        when(stockProductRepository.existsByProductIdAndStockIdAndExpireDate(7, 3, request.getExpireDate()))
+        when(stockProductRepository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(7, 3, request.getExpireDate(),null))
                 .thenReturn(false);
         when(stockProductRepository.save(org.mockito.ArgumentMatchers.any(StockProduct.class)))
                 .thenAnswer(invocation -> {

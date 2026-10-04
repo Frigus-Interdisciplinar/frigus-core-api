@@ -49,6 +49,7 @@ public class GroupService {
     private final GroupMapper groupMapper;
     private final PlanLimitsResolverService planLimitsResolverService;
     private final NotificationService notificationService;
+    private final GroupAccessService groupAccessService;
 
     public List<GroupResponseDto> listMyGroups() {
         User currentUser = requireCurrentUser();
@@ -90,6 +91,8 @@ public class GroupService {
     @Transactional
     public GroupResponseDto createGroup(GroupCreateRequestDto dto) {
         User currentUser = requireCurrentUser();
+
+        userRepository.findByIdForUpdate(currentUser.getId()).orElseThrow(NotFoundException::new);
 
         // 1. Validar se o plano do usuário permite criar grupos
         PlanLimitsDto limits = planLimitsResolverService.resolveLimitsForCurrentUser();
@@ -158,6 +161,7 @@ public class GroupService {
 
     @Transactional
     public GroupResponseDto updateGroup(UUID groupId, GroupUpdateRequestDto dto) {
+        groupAccessService.requireGroupWriteAccess(groupId);
         User currentUser = requireCurrentUser();
         validateUserInGroup(currentUser.getId(), groupId);
 
@@ -208,6 +212,21 @@ public class GroupService {
         User targetUser = userRepository.findById(dto.getUserId())
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário com ID " + dto.getUserId() + " não existe"));
 
+        groupAccessService.requireGroupOwnerAccess(groupId);
+        return enrollMember(group,targetUser,com.frigus.coreapi.enums.MemberRole.EDITOR);
+    }
+
+    @Transactional
+    public GroupResponseDto joinInvitedGroup(UUID groupId,com.frigus.coreapi.enums.MemberRole memberRole) {
+        Group group=groupRepository.findByIdAndDeletedAtIsNull(groupId).orElseThrow(NotFoundException::new);
+        return enrollMember(group,requireCurrentUser(),memberRole);
+    }
+
+    private GroupResponseDto enrollMember(Group group,User targetUser,com.frigus.coreapi.enums.MemberRole memberRole) {
+        User currentUser=requireCurrentUser();
+        UUID groupId=group.getId();
+        targetUser=userRepository.findByIdForUpdate(targetUser.getId()).orElseThrow(NotFoundException::new);
+        group=groupRepository.findByIdForUpdate(groupId).orElseThrow(NotFoundException::new);
         if (userGroupRepository.existsByUserIdAndGroupId(targetUser.getId(), groupId)) {
             throw new ConflictException("Usuário já é membro", "O usuário já faz parte deste grupo de pessoas");
         }
@@ -228,6 +247,7 @@ public class GroupService {
         }
 
         UserGroup userGroup = UserGroup.builder()
+                .memberRole(memberRole)
                 .user(targetUser)
                 .group(group)
                 .createdAt(Instant.now())
@@ -356,5 +376,14 @@ public class GroupService {
             throw new UnauthorizedException("Usuário não autenticado", "Faça login para continuar");
         }
         return user;
+    }
+
+    @Transactional
+    public GroupResponseDto updateMemberRole(UUID groupId,UUID userId,com.frigus.coreapi.enums.MemberRole role) {
+        groupAccessService.requireGroupOwnerAccess(groupId);
+        var member=userGroupRepository.findByUserIdAndGroupId(userId,groupId).orElseThrow(NotFoundException::new);
+        if(member.getGroup().getOwner().getId().equals(userId)) throw new BadRequestException("Proprietário não pode perder acesso","O proprietário mantém controle total do grupo");
+        member.setMemberRole(role);member.setUpdatedAt(Instant.now());userGroupRepository.save(member);
+        return getGroupById(groupId);
     }
 }

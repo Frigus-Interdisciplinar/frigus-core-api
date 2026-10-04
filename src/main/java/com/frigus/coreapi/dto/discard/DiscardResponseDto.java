@@ -19,4 +19,6 @@ public class DiscardResponseDto {
     private Integer stockProductId;
     private String reason;
     private Instant date;
+    private Integer quantity;
+    private Integer movementId;
 }

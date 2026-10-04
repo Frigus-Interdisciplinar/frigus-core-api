@@ -64,13 +64,13 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto body) {
         User user = userRepository.findByEmail(body.getEmail()).orElseThrow(() -> new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos"));
 
-        if (!passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
+        if (user.getDeletedAt()!=null || !passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
             throw new BadRequestException("Senha incorreta", "Senha incorreta");
         }
 
         return LoginResponseDto.builder()
                 .accessToken(tokenProvider.generateAccessToken(user))
-                .refreshToken(refreshTokenService.createRefreshToken(user.getId()))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion()))
                 .user(userMapper.toDto(user))
                 .build();
     }
@@ -84,9 +84,11 @@ public class AuthService {
 
         User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("Usuário não encontrado", "Usuário inválido"));
 
+        if(user.getDeletedAt()!=null || !refreshTokenService.isCurrentVersion(refreshToken,user.getTokenVersion()))
+            throw new UnauthorizedException("Sessão revogada","Faça login novamente");
         refreshTokenService.deleteRefreshToken(refreshToken);
         String newAccessToken = tokenProvider.generateAccessToken(user);
-        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId());
+        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion());
 
         return LoginResponseDto.builder()
                 .accessToken(newAccessToken)
@@ -96,10 +98,8 @@ public class AuthService {
     }
 
     public void logout(String refreshToken) {
-        if(refreshToken != null) {
-            refreshTokenService.deleteRefreshToken(refreshToken);
-        }
+        if(refreshToken != null) refreshTokenService.deleteRefreshToken(refreshToken);
     }
 
-    // TODO: implementar recuperacao de senha
+    // PasswordRecoveryService implements the public password recovery flow.
 }

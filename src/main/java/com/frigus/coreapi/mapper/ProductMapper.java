@@ -15,7 +15,8 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
 
         return ProductResponseDto.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getName()).brand(product.getBrand()).imageUrl(product.getImageUrl())
+                .ownerGroupId(product.getOwnerGroup()==null ? null : product.getOwnerGroup().getId())
                 .category(product.getCategory())
                 .storagePlace(product.getStoragePlace())
                 .unitPrice(product.getUnitPrice())
@@ -31,7 +32,7 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
         }
 
         return Product.builder()
-                .name(dto.getName().trim())
+                .name(dto.getName().trim()).brand(dto.getBrand()).imageUrl(dto.getImageUrl())
                 .category(dto.getCategory())
                 .storagePlace(dto.getStoragePlace())
                 .unitPrice(dto.getUnitPrice())

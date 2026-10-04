@@ -68,7 +68,9 @@ public class TransactionService {
 
         boolean isFreePlan = plan.getPrice() == null || plan.getPrice().compareTo(BigDecimal.ZERO) == 0;
 
+        if(isFreePlan && dto.getPaymentMethod()==null) dto.setPaymentMethod(PaymentMethod.PIX);
         if (!isFreePlan) {
+            if(dto.getPaymentMethod()==null) throw new BadRequestException("Forma de pagamento obrigatória","Informe a forma de pagamento");
             if (dto.getPaymentMethod() == PaymentMethod.PIX && (dto.getFakePixKey() == null || dto.getFakePixKey().isBlank())) {
                 throw new BadRequestException("Chave PIX obrigatória", "Para pagamento via PIX, informe a chave PIX.");
             }

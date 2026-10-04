@@ -47,15 +47,23 @@ public class StockMovementService extends BaseService<StockMovement, Integer, St
 
     @Transactional
     public StockMovementResponseDto create(Integer stockProductId, StockMovementCreateRequestDto dto) {
+        return apply(stockProductId,dto,dto.getMovementType()==MovementType.OUT ? "CONSUMPTION" : "INVENTORY");
+    }
+    @Transactional
+    public StockMovementResponseDto createDiscard(Integer stockProductId,StockMovementCreateRequestDto dto) {return apply(stockProductId,dto,"DISCARD");}
+
+    private StockMovementResponseDto apply(Integer stockProductId,StockMovementCreateRequestDto dto,String purpose) {
         StockProduct stockProduct = stockProductRepository.findByIdForUpdate(stockProductId)
                 .orElseThrow(() -> new NotFoundException("Produto do estoque não encontrado", "O item informado não existe"));
         groupAccessService.requireGroupAccess(stockProduct.getStock().getGroup().getId());
 
+        groupAccessService.requireGroupWriteAccess(stockProduct.getStock().getGroup().getId());
         int balanceAfter = calculateBalanceAfter(stockProduct.getQuantity(), dto);
         stockProduct.setQuantity(balanceAfter);
 
         User user = groupAccessService.requireCurrentUser();
         StockMovement movement = mapper.toEntity(dto);
+        movement.setPurpose(purpose);
         movement.setStockProduct(stockProduct);
         movement.setUser(user);
         movement.setBalanceAfter(balanceAfter);

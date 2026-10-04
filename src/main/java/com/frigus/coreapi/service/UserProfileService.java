@@ -65,6 +65,7 @@ public class UserProfileService {
         }
 
         user.setHashPassword(passwordEncoder.encode(dto.getNewPassword()));
+        user.setTokenVersion(user.getTokenVersion()+1);
         repository.save(user);
     }
 

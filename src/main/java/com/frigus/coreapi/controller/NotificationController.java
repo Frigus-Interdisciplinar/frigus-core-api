@@ -39,4 +39,8 @@ public class NotificationController {
     public void reportAdClicks(@Valid @RequestBody AdClickReportRequestDto dto) {
         notificationService.notifyAdClickMilestones(dto.getTotalClicks());
     }
+
+    @GetMapping("/unread") public Page<NotificationResponseDto> unread(Pageable pageable){return notificationService.listMyNotifications(pageable,true);}
+    @GetMapping("/unread-count") public java.util.Map<String,Long> unreadCount(){return java.util.Map.of("count",notificationService.unreadCount());}
+    @PatchMapping("/read-all") @ResponseStatus(HttpStatus.NO_CONTENT) public void markAllRead(){notificationService.markAllRead();}
 }

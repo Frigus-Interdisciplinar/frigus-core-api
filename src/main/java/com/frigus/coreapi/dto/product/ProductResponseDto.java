@@ -25,4 +25,7 @@ public class ProductResponseDto {
     private BigDecimal unitPrice;
     private UnitOfMeasure unitOfMeasure;
     private Instant createdAt;
+    private String brand;
+    private String imageUrl;
+    private java.util.UUID ownerGroupId;
 }

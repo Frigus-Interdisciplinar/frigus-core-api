@@ -26,7 +26,7 @@ class RefreshTokenServiceTest {
         UUID userId = UUID.randomUUID();
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         String token = service.createRefreshToken(userId);
-        verify(valueOperations).set(eq("refresh:" + token), eq(userId.toString()), eq(30L), eq(TimeUnit.DAYS));
+        verify(valueOperations).set(eq("refresh:" + token), eq(userId+":0"), eq(30L), eq(TimeUnit.DAYS));
 
         when(valueOperations.get("refresh:known")).thenReturn(userId.toString());
         assertThat(service.validateAndGetUserId("known")).isEqualTo(userId);

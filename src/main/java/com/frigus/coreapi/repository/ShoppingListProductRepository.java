@@ -40,9 +40,11 @@ public interface ShoppingListProductRepository extends BaseRepository<ShoppingLi
 
     @Query("select distinct slp.list from ShoppingListProduct slp "
             + "where slp.status = :status and slp.createdAt <= :createdOnOrBefore "
-            + "and slp.list.status = :listStatus")
+            + "and slp.list.status = :listStatus and slp.list.stock.deletedAt is null and slp.list.stock.group.deletedAt is null")
     List<ShoppingList> findListsWithPendingProductsCreatedOnOrBefore(
             @Param("status") ProductListStatus status,
             @Param("listStatus") ListStatus listStatus,
             @Param("createdOnOrBefore") Instant createdOnOrBefore);
+    @Query("select count(i) from ShoppingListProduct i where i.list.stock.group.id=:groupId and i.list.stock.deletedAt is null and i.list.status=com.frigus.coreapi.enums.ListStatus.OPEN and i.status=com.frigus.coreapi.enums.ProductListStatus.PENDING")
+    long countPendingForGroup(@Param("groupId") UUID groupId);
 }

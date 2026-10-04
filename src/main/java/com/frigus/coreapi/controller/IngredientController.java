@@ -36,12 +36,14 @@ public class IngredientController extends BaseController<RecipeIngredient, Integ
         return service.findById(id);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public IngredientResponseDto create(@Valid @RequestBody IngredientRequestDto dto) {
         return service.create(dto);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public IngredientResponseDto update(
             @PathVariable Integer id,
@@ -58,4 +60,7 @@ public class IngredientController extends BaseController<RecipeIngredient, Integ
     public List<IngredientResponseDto> findByProductId(@PathVariable Integer productId) {
         return service.findByProductId(productId);
     }
+
+    @Override @DeleteMapping("/{id}") @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public void delete(@PathVariable Integer id){super.delete(id);}
 }

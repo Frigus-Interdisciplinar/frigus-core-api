@@ -14,9 +14,12 @@ import lombok.Setter;
 @AllArgsConstructor
 public class RecipeRequestDto {
     @NotBlank
+    @jakarta.validation.constraints.Size(max=255)
     private String name;
 
+    @jakarta.validation.constraints.Size(max=10000)
     private String description;
+    @NotBlank @jakarta.validation.constraints.Size(max=20000)
     private String instructions;
 
     @Builder.Default

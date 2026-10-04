@@ -35,7 +35,7 @@ class ProductServiceTest {
     @Test
     void createsCatalogProduct() {
         ProductService service = service();
-        when(productRepository.findFirstByNameIgnoreCase("Leite")).thenReturn(Optional.empty());
+        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull("Leite")).thenReturn(Optional.empty());
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
             Product product = invocation.getArgument(0);
             product.setId(8);
@@ -54,12 +54,12 @@ class ProductServiceTest {
     void listsAllCatalogProducts() {
         PageRequest page = PageRequest.of(0, 10);
         ProductService service = service();
-        when(productRepository.findAll(page)).thenReturn(new PageImpl<>(List.of(product(1), product(2))));
+        when(productRepository.findByOwnerGroupIsNull(page)).thenReturn(new PageImpl<>(List.of(product(1), product(2))));
 
         var response = service.findAll(page);
 
         assertThat(response.getContent()).hasSize(2);
-        verify(productRepository).findAll(page);
+        verify(productRepository).findByOwnerGroupIsNull(page);
     }
 
     @Test
@@ -85,7 +85,7 @@ class ProductServiceTest {
                 .build();
         ProductService service = service();
         when(productRepository.findById(3)).thenReturn(Optional.of(current));
-        when(productRepository.findFirstByNameIgnoreCase("Iogurte")).thenReturn(Optional.empty());
+        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull("Iogurte")).thenReturn(Optional.empty());
         when(productRepository.save(current)).thenReturn(current);
 
         var response = service.update(3, update);
@@ -102,7 +102,7 @@ class ProductServiceTest {
         Product duplicate = product(4);
         ProductService service = service();
         when(productRepository.findById(3)).thenReturn(Optional.of(current));
-        when(productRepository.findFirstByNameIgnoreCase("Leite")).thenReturn(Optional.of(duplicate));
+        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull("Leite")).thenReturn(Optional.of(duplicate));
 
         assertThatThrownBy(() -> service.update(3, updateRequest())).isInstanceOf(ConflictException.class);
     }

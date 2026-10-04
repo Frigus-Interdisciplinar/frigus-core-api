@@ -21,4 +21,7 @@ public class StockProductUpdateRequestDto {
 
     @NotNull(message = "A data de validade é obrigatória")
     private LocalDate expireDate;
+
+    @jakarta.validation.constraints.Size(max = 120)
+    private String batch;
 }

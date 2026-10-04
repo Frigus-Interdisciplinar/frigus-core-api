@@ -45,8 +45,10 @@ public class StockMovement {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
-    @Transient
     private Integer balanceAfter;
+    @Column(length=2000) private String observation;
+    @Builder.Default
+    @Column(nullable=false,length=20) private String purpose="INVENTORY";
 
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "date")

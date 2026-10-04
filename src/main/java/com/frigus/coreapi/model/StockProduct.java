@@ -42,6 +42,8 @@ public class StockProduct {
 
     @Column(name = "minimal_quantity")
     private Integer minimalQuantity;
+    private java.time.Instant deletedAt;
+    @Column(length=120) private String batch;
 
     @NotNull
     @Column(name = "expire_date", nullable = false)

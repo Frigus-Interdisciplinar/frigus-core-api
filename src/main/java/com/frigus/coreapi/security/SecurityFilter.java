@@ -40,7 +40,7 @@ public class SecurityFilter extends OncePerRequestFilter {
                 
                 User user = userRepository.findById(UUID.fromString(userId)).orElse(null);
 
-                if (user != null) {
+                if (user != null && user.getDeletedAt()==null && tokenVersion(decodedJWT)==user.getTokenVersion()) {
                     var authorities = List.of(
                         new SimpleGrantedAuthority("ROLE_" + user.getRole().name()),
                         new SimpleGrantedAuthority("PLAN_" + switchPlanName(planName))
@@ -76,6 +76,7 @@ public class SecurityFilter extends OncePerRequestFilter {
 
     // ! mudar para novos nomes qnd o 1o ano decidir
     private String switchPlanName(String rawPlanName) {
+        if(rawPlanName==null) return "DOMESTIC_FREE";
         switch (rawPlanName) {
             case "Frigus Free":
                 return "DOMESTIC_FREE";
@@ -90,5 +91,11 @@ public class SecurityFilter extends OncePerRequestFilter {
             default:
                 return "DOMESTIC_FREE";
         }
+    }
+
+    private int tokenVersion(DecodedJWT jwt) {
+        var claim=jwt.getClaim("tokenVersion");
+        Integer version=claim==null ? null : claim.asInt();
+        return version==null ? 0 : version;
     }
 }

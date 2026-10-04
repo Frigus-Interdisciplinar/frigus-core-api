@@ -14,11 +14,13 @@ public class RefreshTokenService {
     private final StringRedisTemplate redisTemplate;
     private static final long REFRESH_TOKEN_EXPIRATION_DAYS = 30;
 
-    public String createRefreshToken(UUID userId) {
+    public String createRefreshToken(UUID userId) {return createRefreshToken(userId,0);}
+
+    public String createRefreshToken(UUID userId,int version) {
         String refreshToken = UUID.randomUUID().toString();
         String key = "refresh:" + refreshToken;
 
-        redisTemplate.opsForValue().set(key, userId.toString(), REFRESH_TOKEN_EXPIRATION_DAYS, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(key, userId+":"+version, REFRESH_TOKEN_EXPIRATION_DAYS, TimeUnit.DAYS);
         return refreshToken;
     }
 
@@ -30,11 +32,18 @@ public class RefreshTokenService {
             return null;
         }
 
-        return UUID.fromString(userId);
+        return UUID.fromString(userId.split(":")[0]);
     }
 
     public void deleteRefreshToken(String refreshToken) {
         String key = "refresh:" + refreshToken;
         redisTemplate.delete(key);
+    }
+
+    public boolean isCurrentVersion(String token,int version) {
+        String value=redisTemplate.opsForValue().get("refresh:"+token);
+        if(value==null) return false;
+        String[] parts=value.split(":");
+        return (parts.length==1 ? 0 : Integer.parseInt(parts[1]))==version;
     }
 }

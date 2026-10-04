@@ -49,7 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "server.address=127.0.0.1",
-        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
         "spring.jpa.open-in-view=false", "app.swagger.open-on-startup=false",
         "aws.s3.enabled=false", "logging.level.root=WARN"
@@ -63,8 +63,6 @@ class ApiIntegrationTest {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("frigus_test")
             .withStartupTimeout(java.time.Duration.ofMinutes(3))
-            .withCopyFileToContainer(MountableFile.forHostPath("db/script.sql"),
-                    "/docker-entrypoint-initdb.d/001-schema.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
                     "/test/003_allow_free_transactions.sql");
 
@@ -223,7 +221,7 @@ class ApiIntegrationTest {
         User registered = users.findByEmail("new@example.test").orElseThrow();
         assertThat(registered.getHashPassword()).isNotEqualTo("Strong123!");
         assertThat(passwords.matches("Strong123!", registered.getHashPassword())).isTrue();
-        when(refreshTokens.createRefreshToken(registered.getId())).thenReturn("test-refresh");
+        when(refreshTokens.createRefreshToken(registered.getId(),registered.getTokenVersion())).thenReturn("test-refresh");
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString()).andReturn().getResponse();
@@ -480,7 +478,7 @@ class ApiIntegrationTest {
 
     @Test
     void recipeCrudPersistsChangesAndDeleteOnlyDeactivatesRecipe() throws Exception {
-        var created = body(as(post("/recipes"), owner).contentType("application/json")
+        var created = body(as(post("/recipes"), admin).contentType("application/json")
                 .content("{\"name\":\"Soup\",\"description\":\"Dinner\",\"instructions\":\"Cook\"}"), 201);
         int recipeId = created.get("id").asInt();
         assertThat(created.get("domesticOnly").asBoolean()).isTrue();
@@ -489,21 +487,20 @@ class ApiIntegrationTest {
         var persisted = body(as(get("/recipes/{id}", recipeId), owner), 200);
         assertThat(persisted.get("name").asText()).isEqualTo("Soup");
         assertThat(persisted.get("instructions").asText()).isEqualTo("Cook");
-        mvc.perform(as(put("/recipes/{id}", recipeId), owner).contentType("application/json")
+        mvc.perform(as(put("/recipes/{id}", recipeId), admin).contentType("application/json")
                         .content("{\"name\":\"Salad\",\"description\":\"Lunch\",\"instructions\":\"Mix\",\"domesticOnly\":false,\"active\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Salad"))
                 .andExpect(jsonPath("$.domesticOnly").value(false)).andExpect(jsonPath("$.createdAt").value(persisted.get("createdAt").asText()));
-        mvc.perform(as(delete("/recipes/{id}", recipeId), owner)).andExpect(status().isOk());
+        mvc.perform(as(delete("/recipes/{id}", recipeId), admin)).andExpect(status().isNoContent());
         assertThat(count("recipes")).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT active FROM recipes WHERE id=?", Boolean.class, recipeId)).isFalse();
-        mvc.perform(as(get("/recipes/{id}", recipeId), owner)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.active").value(false)).andExpect(jsonPath("$.name").value("Salad"));
+        mvc.perform(as(get("/recipes/{id}", recipeId), owner)).andExpect(status().isNotFound());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"{}", "{\"name\":null}", "{\"name\":\"   \"}"})
     void invalidRecipeNameReturnsBadRequestWithoutPersisting(String payload) throws Exception {
-        mvc.perform(as(post("/recipes"), owner).contentType("application/json").content(payload))
+        mvc.perform(as(post("/recipes"), admin).contentType("application/json").content(payload))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"));
         assertThat(count("recipes")).isZero();
     }
@@ -513,9 +510,9 @@ class ApiIntegrationTest {
     void missingRecipeReturnsNotFound(String method) throws Exception {
         var request = request(org.springframework.http.HttpMethod.valueOf(method), "/recipes/999999");
         if (method.equals("PUT")) {
-            request.contentType("application/json").content("{\"name\":\"Missing\"}");
+            request.contentType("application/json").content("{\"name\":\"Missing\",\"instructions\":\"Mix\"}");
         }
-        mvc.perform(as(request, owner)).andExpect(status().isNotFound())
+        mvc.perform(as(request, admin)).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
         assertThat(count("recipes")).isZero();
     }

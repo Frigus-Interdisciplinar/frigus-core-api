@@ -21,4 +21,5 @@ public class StockMovementCreateRequestDto {
     @NotNull(message = "A quantidade é obrigatória")
     @PositiveOrZero(message = "A quantidade não pode ser negativa")
     private Integer quantity;
+    @jakarta.validation.constraints.Size(max=2000) private String observation;
 }

@@ -30,6 +30,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserGroupRepository userGroupRepository;
     private final NotificationMapper notificationMapper;
+    private final PreferencesService preferences;
 
     @Transactional(readOnly = true)
     public Page<NotificationResponseDto> listMyNotifications(Pageable pageable) {
@@ -66,19 +67,8 @@ public class NotificationService {
         for (UserGroup membership : userGroupRepository.findByGroupId(group.getId())) {
             String key = deduplicationKeyPrefix == null ? null
                     : deduplicationKeyPrefix + ":" + membership.getUser().getId();
-            if (key != null && notificationRepository.existsByDeduplicationKey(key)) {
-                continue;
-            }
-            notificationRepository.save(Notification.builder()
-                    .recipient(membership.getUser())
-                    .group(group)
-                    .type(type)
-                    .title(title)
-                    .body(body)
-                    .referenceId(referenceId)
-                    .deduplicationKey(key)
-                    .createdAt(Instant.now())
-                    .build());
+            if(!preferences.allows(membership.getUser().getId(),type)) continue;
+            notificationRepository.insertIfAbsent(membership.getUser().getId(),group.getId(),type.name(),title,body,referenceId,key);
         }
     }
 
@@ -107,7 +97,7 @@ public class NotificationService {
     }
 
     private boolean isDomesticOrCommercialGroup(Group group) {
-        if (group == null || group.getOwner() == null) {
+        if (group == null || group.getOwner() == null || group.getDeletedAt()!=null) {
             return false;
         }
         AccountType accountType = group.getOwner().getAccountType();
@@ -121,4 +111,12 @@ public class NotificationService {
         }
         return user;
     }
+
+    @Transactional(readOnly=true)
+    public Page<NotificationResponseDto> listMyNotifications(Pageable pageable,boolean unreadOnly){
+        UUID id=requireCurrentUser().getId();
+        return (unreadOnly ? notificationRepository.findByRecipientIdAndReadAtIsNullOrderByCreatedAtDesc(id,pageable) : notificationRepository.findByRecipientIdOrderByCreatedAtDesc(id,pageable)).map(notificationMapper::toDto);
+    }
+    @Transactional(readOnly=true) public long unreadCount(){return notificationRepository.countByRecipientIdAndReadAtIsNull(requireCurrentUser().getId());}
+    @Transactional public void markAllRead(){notificationRepository.markAllRead(requireCurrentUser().getId(),Instant.now());}
 }

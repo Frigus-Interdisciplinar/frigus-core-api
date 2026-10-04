@@ -30,6 +30,14 @@ public class Product {
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
+    @ManyToOne(fetch=FetchType.LAZY)
+    @JoinColumn(name="owner_group_id")
+    private Group ownerGroup;
+    @Column(columnDefinition="TEXT")
+    private String imageUrl;
+    @Column(length=120)
+    private String brand;
+
     @Column(name = "category", columnDefinition = "category_enum not null")
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)

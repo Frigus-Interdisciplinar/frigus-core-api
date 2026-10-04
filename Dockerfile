@@ -15,6 +15,7 @@ RUN mvn clean package -DskipTests -B
 FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system spring && adduser --system --ingroup spring spring
 USER spring:spring
 
@@ -24,7 +25,6 @@ EXPOSE 8080
 # Portas do container (8080 padrao, 10000 do Render)
 EXPOSE 8080 10000
 
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 # Otimizacoes de memoria para execucao em container (Render Free 512MB) e IPv4
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+UseSerialGC -Xss256k -Djava.net.preferIPv4Stack=true"
 

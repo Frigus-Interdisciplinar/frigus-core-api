@@ -11,4 +11,7 @@ public interface RecipeIngredientRepository extends BaseRepository<RecipeIngredi
     Optional<RecipeIngredient> findByRecipeIdAndProductId(Integer recipeId, Integer productId);
     boolean existsByRecipeIdAndProductId(Integer recipeId, Integer productId);
     void deleteByRecipeId(Integer recipeId);
+
+ @org.springframework.data.jpa.repository.Query("select i from RecipeIngredient i join fetch i.recipe join fetch i.product where i.recipe.active=true")
+ java.util.List<RecipeIngredient> findActiveRecipeIngredients();
 }

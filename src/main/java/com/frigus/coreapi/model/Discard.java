@@ -30,6 +30,8 @@ public class Discard {
 
     @Column(name = "reason", length = Integer.MAX_VALUE)
     private String reason;
+    private Integer quantity;
+    @OneToOne(fetch=FetchType.LAZY) @JoinColumn(name="movement_id") private StockMovement movement;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

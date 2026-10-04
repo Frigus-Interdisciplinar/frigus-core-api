@@ -61,6 +61,11 @@ public class User {
     @Column(name = "role", nullable = false, columnDefinition = "user_role_enum not null")
     private Role role;
 
+    @Builder.Default
+    @Column(nullable=false)
+    private int tokenVersion=0;
+    private Instant deletedAt;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.EAGER)
     private Subscription subscription;
 

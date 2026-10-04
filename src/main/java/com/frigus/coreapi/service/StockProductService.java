@@ -56,6 +56,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
 
     @Override
     protected void authorizeRead(StockProduct stockProduct) {
+        if(stockProduct.getDeletedAt()!=null || stockProduct.getStock().getDeletedAt()!=null) throw new NotFoundException();
         groupAccessService.requireGroupAccess(stockProduct.getStock().getGroup().getId());
     }
 
@@ -73,16 +74,18 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
     @Transactional
     public StockProductResponseDto create(StockProductCreateRequestDto dto) {
         Stock stock = getRequiredStock(dto.getStockId());
-        groupAccessService.requireGroupAccess(stock.getGroup().getId());
+        groupAccessService.requireGroupWriteAccess(stock.getGroup().getId());
         Product product = productRepository.findById(dto.getProductId())
                 .orElseThrow(() -> new NotFoundException("Produto não encontrado", "O produto informado não existe"));
 
-        if (repository.existsByProductIdAndStockIdAndExpireDate(product.getId(), stock.getId(), dto.getExpireDate())) {
+        if (repository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(product.getId(), stock.getId(), dto.getExpireDate(),dto.getBatch()==null || dto.getBatch().isBlank() ? null : dto.getBatch().trim())) {
             throw new ConflictException(
                     "Produto já cadastrado neste estoque para a validade informada",
                     "Já existe um item com este produto, estoque e validade");
         }
 
+        if(product.getOwnerGroup()!=null && !product.getOwnerGroup().getId().equals(stock.getGroup().getId()))
+            throw new com.frigus.coreapi.exception.ForbiddenException("Produto de outro grupo","Produto indisponível");
         StockProduct stockProduct = mapper.toEntity(dto);
         stockProduct.setProduct(product);
         stockProduct.setStock(stock);
@@ -95,14 +98,16 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
     public StockProductResponseDto update(Integer id, StockProductUpdateRequestDto dto) {
         StockProduct stockProduct = getRequiredEntity(id);
         authorizeRead(stockProduct);
+        groupAccessService.requireGroupWriteAccess(stockProduct.getStock().getGroup().getId());
         stockProduct.setMinimalQuantity(dto.getMinimalQuantity());
         stockProduct.setExpireDate(dto.getExpireDate());
+        if (dto.getBatch() != null) stockProduct.setBatch(dto.getBatch().trim());
         stockProduct.setProductStatus(statusResolver.resolve(dto.getExpireDate()));
         return mapToDto(repository.save(stockProduct));
     }
 
     private Stock getRequiredStock(Integer stockId) {
-        return stockRepository.findById(stockId)
+        return stockRepository.findById(stockId).filter(stock -> stock.getDeletedAt()==null)
                 .orElseThrow(() -> new NotFoundException("Estoque não encontrado", "O estoque informado não existe"));
     }
 
@@ -121,4 +126,12 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             throw new BadRequestException("Filtro inválido", "O filtro " + name + " é inválido");
         }
     }
+
+    @Override @Transactional
+    public void delete(Integer id) {
+        StockProduct item=repository.findByIdForUpdate(id).orElseThrow(NotFoundException::new);
+        groupAccessService.requireGroupWriteAccess(item.getStock().getGroup().getId());
+        item.setDeletedAt(java.time.Instant.now());repository.save(item);
+    }
+    @Override protected void authorizeDelete(StockProduct item) {groupAccessService.requireGroupWriteAccess(item.getStock().getGroup().getId());}
 }

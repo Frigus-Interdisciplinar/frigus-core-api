@@ -46,6 +46,7 @@ public class ShoppingListProduct {
     @ColumnDefault("1")
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
+    @Column(precision=10,scale=2) private java.math.BigDecimal purchasedUnitPrice;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

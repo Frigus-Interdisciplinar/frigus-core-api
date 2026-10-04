@@ -40,9 +40,10 @@ public class ProductService extends BaseService<
 
     @Transactional
     public ProductResponseDto update(Integer id, ProductUpdateRequestDto dto) {
-        Product product = repository.findById(id).orElseThrow(NotFoundException::new);
+        Product product = getRequiredEntity(id);
         ensureUniqueName(dto.getName().trim(), product.getId());
         product.setName(dto.getName().trim());
+        product.setBrand(dto.getBrand());product.setImageUrl(dto.getImageUrl());
         product.setCategory(dto.getCategory());
         product.setStoragePlace(dto.getStoragePlace());
         product.setUnitPrice(dto.getUnitPrice());
@@ -54,7 +55,7 @@ public class ProductService extends BaseService<
     @Override
     @Transactional
     public void delete(Integer id) {
-        Product product = repository.findById(id).orElseThrow(NotFoundException::new);
+        Product product = getRequiredEntity(id);
 
         if (repository.isReferenced(product.getId())) {
             throw new ConflictException(
@@ -66,7 +67,7 @@ public class ProductService extends BaseService<
     }
 
     private void ensureUniqueName(String name, Integer currentProductId) {
-        Optional<Product> duplicate = repository.findFirstByNameIgnoreCase(name);
+        Optional<Product> duplicate = repository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull(name);
 
         if (duplicate.isPresent() && !duplicate.get().getId().equals(currentProductId)) {
             throw new ConflictException(
@@ -75,4 +76,14 @@ public class ProductService extends BaseService<
         }
     }
 
+
+    @Override @Transactional(readOnly=true)
+    public org.springframework.data.domain.Page<ProductResponseDto> findAll(org.springframework.data.domain.Pageable pageable) {
+        return repository.findByOwnerGroupIsNull(pageable).map(mapper::toDto);
+    }
+    @Override protected Product getRequiredEntity(Integer id) {
+        Product product=super.getRequiredEntity(id);
+        if(product.getOwnerGroup()!=null) throw new NotFoundException("Produto não encontrado","Consulte o catálogo do grupo");
+        return product;
+    }
 }

@@ -39,4 +39,6 @@ public class ProductUpdateRequestDto {
 
     @NotNull(message = "A unidade de medida é obrigatória")
     private UnitOfMeasure unitOfMeasure;
+    @Size(max=120) private String brand;
+    @Size(max=2048) @jakarta.validation.constraints.Pattern(regexp="^$|https?://.*", message="A imagem deve ser uma URL HTTP ou HTTPS") private String imageUrl;
 }

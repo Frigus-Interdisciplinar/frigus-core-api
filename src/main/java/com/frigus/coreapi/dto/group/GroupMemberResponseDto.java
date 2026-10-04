@@ -16,4 +16,5 @@ public class GroupMemberResponseDto {
     private String email;
     private Boolean isOwner;
     private Instant joinedAt;
+    private com.frigus.coreapi.enums.MemberRole memberRole;
 }

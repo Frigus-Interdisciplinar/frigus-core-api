@@ -24,4 +24,6 @@ public class StockProductResponseDto {
     private LocalDate expireDate;
     private ProductStatus productStatus;
     private Category category;
+    private String batch;
+    private com.frigus.coreapi.dto.product.ProductResponseDto product;
 }
