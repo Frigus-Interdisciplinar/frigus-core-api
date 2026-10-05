@@ -1,6 +1,7 @@
 package com.frigus.coreapi.repository;
 
 import com.frigus.coreapi.model.Product;
+<<<<<<< HEAD
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,4 +22,8 @@ public interface ProductRepository extends BaseRepository<Product, Integer> {
             )
             """, nativeQuery = true)
     boolean isReferenced(@Param("productId") Integer productId);
+=======
+
+public interface ProductRepository extends BaseRepository<Product, Integer> {
+>>>>>>> f050c93a2a16b2e7225b9b15bc1d8980692e8c86
 }
