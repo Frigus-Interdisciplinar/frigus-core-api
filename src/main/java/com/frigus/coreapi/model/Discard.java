@@ -36,5 +36,8 @@ public class Discard {
     @Column(name = "date", nullable = false)
     private Instant date;
 
+    @NotNull
+    @Column(name = "quantity", nullable = false, updatable = false)
+    private Integer quantity;
 
 }

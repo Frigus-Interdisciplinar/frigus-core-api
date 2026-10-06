@@ -45,6 +45,63 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class MessageServiceTest {
+    @Test
+    void departedParticipantCannotSendMessageOrBroadcast() {
+        sampleParticipant.setLeftAt(Instant.parse("2020-01-01T00:00:00Z"));
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser,
+                MessageSendDto.builder().conversationId(sampleConversation.getId()).content("Hello").build()))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messagingTemplate, messageMapper);
+    }
+
+    @Test
+    void missingConversationAndGroupIsBadRequestWithoutWritingOrBroadcasting() {
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser, MessageSendDto.builder().content("Hello").build()))
+                .isInstanceOf(com.frigus.coreapi.exception.BadRequestException.class);
+        verifyNoInteractions(conversationRepository, messageRepository, messagingTemplate);
+    }
+
+    @Test
+    void unauthenticatedRestMessageCannotReadOrWriteConversation() {
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> messageService.sendMessage(null,
+                MessageSendDto.builder().conversationId(sampleConversation.getId()).content("Hello").build()))
+                .isInstanceOf(com.frigus.coreapi.exception.UnauthorizedException.class);
+        verifyNoInteractions(conversationRepository, messageRepository, messagingTemplate);
+    }
+
+    @Test
+    void rejectsHistoryForInactiveParticipantBeforeReadingMessages() {
+        UUID conversationId = sampleConversation.getId();
+        assertThatThrownBy(() -> messageService.getMessagesHistory(conversationId, PageRequest.of(0, 10)))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messageMapper);
+    }
+
+    @Test
+    void refusesReadReceiptFromNonParticipantWithoutWriting() {
+        assertThatThrownBy(() -> messageService.markAsRead(sampleConversation.getId(), 1))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messageReadRepository);
+    }
+
+    @Test
+    void repeatedReadReceiptDoesNotCreateDuplicateRecord() {
+        UUID conversationId = sampleConversation.getId();
+        when(conversationParticipantRepository.isUserActiveParticipant(conversationId, currentUser.getId())).thenReturn(true);
+        when(messageRepository.findById(1)).thenReturn(Optional.of(Message.builder().id(1).build()));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(conversationId, currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+        when(messageReadRepository.existsByIdMessageIdAndIdUserId(1, currentUser.getId())).thenReturn(true);
+
+        messageService.markAsRead(conversationId, 1);
+
+        verify(messageReadRepository, never()).save(any());
+    }
+
 
     @Mock
     private MessageRepository messageRepository;
