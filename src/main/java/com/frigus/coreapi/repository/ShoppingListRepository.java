@@ -1,6 +1,5 @@
 package com.frigus.coreapi.repository;
 
-<<<<<<< HEAD
 import com.frigus.coreapi.enums.ListStatus;
 import com.frigus.coreapi.model.ShoppingList;
 import org.springframework.data.domain.Page;
@@ -21,11 +20,4 @@ public interface ShoppingListRepository extends BaseRepository<ShoppingList, UUI
     Page<ShoppingList> findByStock_GroupIdAndStatus(UUID groupId, ListStatus status, Pageable pageable);
 
     Optional<ShoppingList> findFirstByStockIdAndStatusOrderByCreatedAtDesc(Integer stockId, ListStatus status);
-=======
-import com.frigus.coreapi.model.ShoppingList;
-
-import java.util.UUID;
-
-public interface ShoppingListRepository extends BaseRepository<ShoppingList, UUID> {
->>>>>>> f050c93a2a16b2e7225b9b15bc1d8980692e8c86
 }
