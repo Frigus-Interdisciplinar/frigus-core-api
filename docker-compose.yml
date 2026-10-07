@@ -23,9 +23,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-  mailpit:
-    image: axllent/mailpit:v1.24
-    ports: ["127.0.0.1:${LOCAL_MAIL_PORT:-8025}:8025"]
   api:
     build: .
     ports: ["127.0.0.1:${LOCAL_API_PORT:-8080}:8080"]
@@ -38,15 +35,16 @@ services:
       JWT_SECRET: ${LOCAL_JWT_SECRET:-local-development-only-frigus-secret-32-chars}
       JWT_EXPIRATION: 900000
       AWS_S3_ENABLED: "false"
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Frigus}
       APP_FRONTEND_URL: ${LOCAL_FRONTEND_URL:-http://localhost:5173}
       FRIGUS_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:8000}
       APP_TIME_ZONE: America/Sao_Paulo
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
-      mailpit: {condition: service_started}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s

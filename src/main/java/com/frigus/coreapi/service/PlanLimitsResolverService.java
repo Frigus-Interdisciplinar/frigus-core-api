@@ -4,7 +4,6 @@ import com.frigus.coreapi.enums.PlanCode;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.model.Plan;
-import com.frigus.coreapi.model.Subscription;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.utils.ServiceUtils;
@@ -29,30 +28,20 @@ public class PlanLimitsResolverService {
         if (user == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
-        
-        Subscription subscription = user.getSubscription();
-        if (subscription == null || subscription.getPlan() == null) {
-            return getLimitsForPlan(PlanCode.FREE);
-        }
-        
-        Plan plan = subscription.getPlan();
-        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode()); 
-        return getLimitsForPlan(planCode);
+
+        return getLimitsForUser(user.getId());
     }
 
     public PlanLimitsDto getLimitsForUser(UUID userId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdWithSubscriptionAndPlan(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário"));
-        
-        Subscription subscription = user.getSubscription();
-        if (subscription == null || subscription.getPlan() == null) {
+
+        if (user.getSubscription() == null || user.getSubscription().getPlan() == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
 
-        Plan plan = subscription.getPlan();
-        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode()); 
-
-        return getLimitsForPlan(planCode);
+        Plan plan = user.getSubscription().getPlan();
+        return getLimitsForPlan(PlanCode.valueOf(plan.getPlanCode()));
     }
 
     public PlanLimitsDto getLimitsForPlan(PlanCode planCode) {

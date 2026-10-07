@@ -1,8 +1,26 @@
 package com.frigus.coreapi.dto.user;
-import java.time.*;
-import java.util.*;
-import java.math.BigDecimal;
-import jakarta.validation.constraints.*;
-import jakarta.validation.Valid;
-import com.frigus.coreapi.enums.*;
-public record ResetPasswordRequestDto(@NotBlank @Size(max=128) String token, @NotBlank @Size(min=8,max=128) String newPassword) { }
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+public record ResetPasswordRequestDto(
+        @NotBlank
+        @Email
+        @Size(max = 255)
+        String email,
+
+        @NotBlank
+        @Pattern(regexp = "\\d{6}")
+        String code,
+
+        @NotBlank
+        @Pattern(
+                regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).{8,20}$",
+                message = "A senha deve conter de 8 a 20 caracteres, "
+                        + "contendo pelo menos uma letra maiúscula, uma letra minúscula, "
+                        + "um número e um caractere especial"
+        )
+        String newPassword
+) { }
