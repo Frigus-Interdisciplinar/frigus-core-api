@@ -96,6 +96,9 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
         StockProduct stockProduct = getRequiredEntity(id);
         authorizeRead(stockProduct);
         stockProduct.setMinimalQuantity(dto.getMinimalQuantity());
+        if (dto.getPurchaseUnitPrice() != null) {
+            stockProduct.setPurchaseUnitPrice(dto.getPurchaseUnitPrice());
+        }
         stockProduct.setExpireDate(dto.getExpireDate());
         stockProduct.setProductStatus(statusResolver.resolve(dto.getExpireDate()));
         return mapToDto(repository.save(stockProduct));

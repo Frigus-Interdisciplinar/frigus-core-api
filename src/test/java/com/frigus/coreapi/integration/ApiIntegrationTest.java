@@ -66,7 +66,9 @@ class ApiIntegrationTest {
             .withCopyFileToContainer(MountableFile.forHostPath("db/script.sql"),
                     "/docker-entrypoint-initdb.d/001-schema.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
-                    "/test/003_allow_free_transactions.sql");
+                    "/test/003_allow_free_transactions.sql")
+            .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/004_expand_stock_product_contract.sql"),
+                    "/test/004_expand_stock_product_contract.sql");
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry properties) {
@@ -113,8 +115,8 @@ class ApiIntegrationTest {
         otherGroupId = group(outsider, "Other group");
         stockId = jdbc.queryForObject("INSERT INTO stocks(group_id,name) VALUES (?, 'Fridge') RETURNING id", Integer.class, groupId);
         productId = jdbc.queryForObject("""
-                INSERT INTO products(name,category,storage_place,unit_price,unit_of_measure)
-                VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER') RETURNING id
+                INSERT INTO products(name,category,storage_place,unit_price,unit_of_measure,brand,image_url)
+                VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER','Dairy Co','https://cdn.example.test/milk.png') RETURNING id
                 """, Integer.class);
         itemId = jdbc.queryForObject("""
                 INSERT INTO stock_products(product_id,stock_id,quantity,minimal_quantity,expire_date,category)
@@ -133,6 +135,8 @@ class ApiIntegrationTest {
         mvc.perform(get("/products").param("page", "0").param("size", "1").param("sort", "id,asc"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].id").value(productId))
                 .andExpect(jsonPath("$.content[0].unitPrice").value(8.50))
+                .andExpect(jsonPath("$.content[0].brand").value("Dairy Co"))
+                .andExpect(jsonPath("$.content[0].imageUrl").value("https://cdn.example.test/milk.png"))
                 .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.size").value(1));
         mvc.perform(get("/plans/active")).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].planCode").isString());
@@ -184,11 +188,16 @@ class ApiIntegrationTest {
 
     @Test
     void adminCreatesUpdatesAndDeletesCatalogProduct() throws Exception {
-        JsonNode created = body(as(post("/products"), admin).contentType("application/json").content(productBody(" Bread ")), 201);
+        String createPayload = productBody(" Bread ").replace("}",
+                ",\"brand\":\"  Bakery Co  \",\"imageUrl\":\"https://cdn.example.test/bread.png\"}");
+        JsonNode created = body(as(post("/products"), admin).contentType("application/json").content(createPayload), 201);
         int id = created.get("id").asInt();
         assertThat(created.get("name").asString()).isEqualTo("Bread");
+        assertThat(created.get("brand").asString()).isEqualTo("Bakery Co");
         mvc.perform(as(put("/products/" + id), admin).contentType("application/json").content(productBody("Rice")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Rice"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Rice"))
+                .andExpect(jsonPath("$.brand").value("Bakery Co"))
+                .andExpect(jsonPath("$.imageUrl").value("https://cdn.example.test/bread.png"));
         mvc.perform(as(delete("/products/" + id), admin)).andExpect(status().isNoContent());
         mvc.perform(get("/products/" + id)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
@@ -277,15 +286,30 @@ class ApiIntegrationTest {
 
     @Test
     void createsUpdatesAndDeletesStockProductAndRejectsDuplicateBatch() throws Exception {
+        JsonNode legacyItem = body(as(get("/stock-products/" + itemId), owner), 200);
+        assertThat(legacyItem.get("purchaseUnitPrice").isNull()).isTrue();
+        assertThat(legacyItem.get("product").get("name").asString()).isEqualTo("Milk");
+
         String payload = "{\"stockId\":" + stockId + ",\"productId\":" + productId +
-                ",\"quantity\":2,\"minimalQuantity\":0,\"expireDate\":\"2099-02-01\"}";
-        int id = body(as(post("/stock-products"), owner).contentType("application/json").content(payload), 201).get("id").asInt();
+                ",\"quantity\":2,\"minimalQuantity\":0,\"purchaseUnitPrice\":7.90,\"expireDate\":\"2099-02-01\"}";
+        JsonNode created = body(as(post("/stock-products"), owner).contentType("application/json").content(payload), 201);
+        int id = created.get("id").asInt();
+        assertThat(created.get("purchaseUnitPrice").decimalValue()).isEqualByComparingTo("7.90");
+        assertThat(created.get("product").get("name").asString()).isEqualTo("Milk");
+        assertThat(created.get("product").get("unitPrice").decimalValue()).isEqualByComparingTo("8.50");
+        assertThat(created.get("product").get("brand").asString()).isEqualTo("Dairy Co");
         mvc.perform(as(post("/stock-products"), owner).contentType("application/json").content(payload)).andExpect(status().isConflict());
         mvc.perform(as(put("/stock-products/" + id), owner).contentType("application/json")
-                        .content("{\"minimalQuantity\":1,\"expireDate\":\"2099-03-01\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.quantity").value(2)).andExpect(jsonPath("$.productStatus").value("FRESH"));
+                        .content("{\"minimalQuantity\":1,\"purchaseUnitPrice\":7.50,\"expireDate\":\"2099-03-01\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.quantity").value(2))
+                .andExpect(jsonPath("$.purchaseUnitPrice").value(7.50))
+                .andExpect(jsonPath("$.productStatus").value("FRESH"));
+        mvc.perform(as(get("/stock-products/" + id), owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.product.id").value(productId))
+                .andExpect(jsonPath("$.product.imageUrl").value("https://cdn.example.test/milk.png"));
         mvc.perform(as(get("/stock-products").param("stockId", String.valueOf(stockId)).param("size", "1"), owner))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].product.name").value("Milk"));
         mvc.perform(as(delete("/stock-products/" + id), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(delete("/stock-products/" + id), owner)).andExpect(status().isOk());
         assertThat(count("stock_products")).isEqualTo(1);
@@ -433,6 +457,31 @@ class ApiIntegrationTest {
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThat(count("stock_products")).isEqualTo(1);
         assertThat(count("products")).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsInvalidProductImageAndPurchasePrice() throws Exception {
+        String invalidImage = productBody("Bread").replace("}", ",\"imageUrl\":\"ftp://example.test/image.png\"}");
+        mvc.perform(as(post("/products"), admin).contentType("application/json").content(invalidImage))
+                .andExpect(status().isBadRequest());
+        mvc.perform(as(post("/stock-products"), owner).contentType("application/json")
+                        .content("{\"stockId\":" + stockId + ",\"productId\":" + productId
+                                + ",\"quantity\":1,\"purchaseUnitPrice\":0,\"expireDate\":\"2099-04-01\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(count("products")).isEqualTo(1);
+        assertThat(count("stock_products")).isEqualTo(1);
+    }
+
+    @Test
+    void stockContractMigrationIsIdempotentAndPreservesRows() throws Exception {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var migration = POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", POSTGRES.getDatabaseName(),
+                    "-v", "ON_ERROR_STOP=1", "-f", "/test/004_expand_stock_product_contract.sql");
+            assertThat(migration.getExitCode()).as(migration.getStderr()).isZero();
+        }
+        assertThat(count("products")).isEqualTo(1);
+        assertThat(count("stock_products")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT brand FROM products WHERE id=?", String.class, productId)).isEqualTo("Dairy Co");
     }
 
     @Test

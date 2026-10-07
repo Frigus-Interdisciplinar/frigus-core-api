@@ -76,12 +76,16 @@ class ProductServiceTest {
     @Test
     void updatesCatalogProduct() {
         Product current = product(3);
+        current.setBrand("Marca antiga");
+        current.setImageUrl("https://cdn.example.test/old.png");
         ProductUpdateRequestDto update = ProductUpdateRequestDto.builder()
                 .name("  Iogurte  ")
                 .category(Category.DAIRY)
                 .storagePlace(StoragePlace.FRIDGE)
                 .unitPrice(new BigDecimal("12.30"))
                 .unitOfMeasure(UnitOfMeasure.UNIT)
+                .brand("  Marca nova  ")
+                .imageUrl("   ")
                 .build();
         ProductService service = service();
         when(productRepository.findById(3)).thenReturn(Optional.of(current));
@@ -93,7 +97,26 @@ class ProductServiceTest {
         assertThat(response.getName()).isEqualTo("Iogurte");
         assertThat(response.getUnitPrice()).isEqualByComparingTo("12.30");
         assertThat(response.getUnitOfMeasure()).isEqualTo(UnitOfMeasure.UNIT);
+        assertThat(response.getBrand()).isEqualTo("Marca nova");
+        assertThat(response.getImageUrl()).isNull();
         verify(productRepository).save(current);
+    }
+
+    @Test
+    void preservesOptionalMetadataWhenUpdateOmitsIt() {
+        Product current = product(3);
+        current.setBrand("Marca");
+        current.setImageUrl("https://cdn.example.test/milk.png");
+        ProductService service = service();
+        when(productRepository.findById(3)).thenReturn(Optional.of(current));
+        when(productRepository.findFirstByNameIgnoreCase("Leite")).thenReturn(Optional.of(current));
+        when(productRepository.save(current)).thenReturn(current);
+
+        ProductUpdateRequestDto update = updateRequest();
+        service.update(3, update);
+
+        assertThat(current.getBrand()).isEqualTo("Marca");
+        assertThat(current.getImageUrl()).isEqualTo("https://cdn.example.test/milk.png");
     }
 
     @Test

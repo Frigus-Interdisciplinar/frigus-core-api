@@ -47,6 +47,12 @@ public class ProductService extends BaseService<
         product.setStoragePlace(dto.getStoragePlace());
         product.setUnitPrice(dto.getUnitPrice());
         product.setUnitOfMeasure(dto.getUnitOfMeasure());
+        if (dto.getBrand() != null) {
+            product.setBrand(normalizeOptional(dto.getBrand()));
+        }
+        if (dto.getImageUrl() != null) {
+            product.setImageUrl(normalizeOptional(dto.getImageUrl()));
+        }
 
         return mapper.toDto(repository.save(product));
     }
@@ -73,6 +79,11 @@ public class ProductService extends BaseService<
                     "Nome de produto já cadastrado",
                     "Já existe um produto com este nome no catálogo correspondente");
         }
+    }
+
+    private String normalizeOptional(String value) {
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
 }

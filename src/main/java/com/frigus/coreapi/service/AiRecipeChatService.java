@@ -69,7 +69,7 @@ public class AiRecipeChatService {
         FrigusAiPromptPayload promptPayload = FrigusAiPromptPayload.builder()
                 .userId(currentUser != null && currentUser.getId() != null ? currentUser.getId().toString() : null)
                 .message(dto.getMessage())
-                .sessionId(dto.getSessionId())
+                .sessionId(dto.getSessionId()) // TODO: NAO PASSAR, IA JA GERA
                 .stockId(stock.getId())
                 .availableItems(itemsPayload)
                 .build();
