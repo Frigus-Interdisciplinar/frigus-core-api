@@ -1,7 +1,7 @@
 package com.frigus.coreapi.repository;
 
-import com.frigus.coreapi.enums.ProductListStatus;
 import com.frigus.coreapi.enums.ListStatus;
+import com.frigus.coreapi.enums.ProductListStatus;
 import com.frigus.coreapi.model.ShoppingList;
 import com.frigus.coreapi.model.ShoppingListProduct;
 import org.springframework.data.domain.Page;
