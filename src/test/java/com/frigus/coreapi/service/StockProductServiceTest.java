@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,12 +39,20 @@ class StockProductServiceTest {
                 .id(3)
                 .group(Group.builder().id(groupId).build())
                 .build();
-        Product product = Product.builder().id(7).category(Category.DAIRY).build();
+        Product product = Product.builder()
+                .id(7)
+                .name("Leite")
+                .category(Category.DAIRY)
+                .unitPrice(new BigDecimal("8.50"))
+                .brand("Marca")
+                .imageUrl("https://cdn.example.test/milk.png")
+                .build();
         StockProductCreateRequestDto request = StockProductCreateRequestDto.builder()
                 .stockId(3)
                 .productId(7)
                 .quantity(4)
                 .minimalQuantity(1)
+                .purchaseUnitPrice(new BigDecimal("7.90"))
                 .expireDate(LocalDate.now().plusDays(2))
                 .build();
         StockProductService service = new StockProductService(
@@ -71,5 +80,9 @@ class StockProductServiceTest {
         assertThat(response.getCategory()).isEqualTo(Category.DAIRY);
         assertThat(response.getProductStatus()).isEqualTo(ProductStatus.NEAR_EXPIRATION);
         assertThat(response.getQuantity()).isEqualTo(4);
+        assertThat(response.getPurchaseUnitPrice()).isEqualByComparingTo("7.90");
+        assertThat(response.getProduct().getName()).isEqualTo("Leite");
+        assertThat(response.getProduct().getUnitPrice()).isEqualByComparingTo("8.50");
+        assertThat(response.getProduct().getBrand()).isEqualTo("Marca");
     }
 }

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,4 +40,11 @@ public class ProductUpdateRequestDto {
 
     @NotNull(message = "A unidade de medida é obrigatória")
     private UnitOfMeasure unitOfMeasure;
+
+    @Size(max = 120, message = "A marca deve ter no máximo 120 caracteres")
+    private String brand;
+
+    @Size(max = 2048, message = "A URL da imagem deve ter no máximo 2048 caracteres")
+    @Pattern(regexp = "(?i)^(?:\\s*|\\s*https?://\\S+\\s*)$", message = "A URL da imagem deve ser HTTP ou HTTPS")
+    private String imageUrl;
 }
