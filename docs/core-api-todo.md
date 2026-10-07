@@ -1,27 +1,29 @@
 # To-do — capacidades necessárias na core-api
 
-Este documento reúne capacidades das telas que ainda precisam de contrato ou implementação na API principal.
+Revisão do estado atual dos controllers, DTOs, serviços, modelos e configuração de segurança em 07/10/2026. Este documento registra lacunas de produto/contrato; endpoints já implementados aparecem como contexto para evitar reabrir trabalho concluído.
 
 ## Bloqueadores funcionais
 
-- Dashboard doméstico: resumo por usuário/grupo, itens próximos da validade, consumo semanal, distribuição por local e compras pendentes. Não existe `GET /stocks/my-summary` na core-api; a antiga tentativa do BFF apontava para um endpoint inexistente.
-- Lista de compras: as entidades existem no banco, mas não há controller/DTO/service público para criar, editar, marcar comprado, limpar concluídos ou sugerir itens.
-- Alertas e notificações: validade próxima, estoque baixo/zerado, itens adicionados à lista, lembretes de compras, entrada de membros e cliques de anúncios têm notificações e caixa de leitura. Preferências de alerta e resumo semanal ainda não estão disponíveis.
-- Configurações domésticas: faltam preferências de lembrete, resumo semanal e tema.
-- Receitas: as entidades existem e há IA por estoque, mas não há CRUD/listagem/detalhe de receitas, favoritos, ingredientes disponíveis nem sugestões gerais para as telas.
-- Recuperação de senha: a tela pede envio de e-mail/link de redefinição; a core-api só tem troca de senha para usuário autenticado e reset administrativo.
+- **Dashboard doméstico:** ainda não existe `GET /stocks/my-summary` nem operação equivalente que agregue, por usuário/grupo, itens próximos da validade, consumo semanal, distribuição por local e compras pendentes. Estoques são listados por `groupId` (`GET /stocks`).
+- **Lista de compras — cobertura parcial implementada:** `ShoppingListController` e serviços já permitem criar, filtrar/listar, detalhar, atualizar, excluir, fechar/cancelar/reabrir listas; gerar lista por baixo estoque; adicionar itens unitários/em lote, paginar itens, atualizar quantidade/status, marcar comprado e remover. O contrato do item contém produto, quantidade e status, mas não preço, fornecedor nem total de compra; confirmar se a tela comercial/doméstica precisa desses campos ou de compras concluídas separadas.
+- **Alertas e notificações — cobertura parcial implementada:** há listagem paginada e marcação individual como lida (`/notifications`), registro de marcos de cliques de anúncios e scheduler de notificações. Não há contrato para preferências por usuário/grupo, resumo semanal ou configuração dos tipos/frequência de alerta. Confirmar quais eventos e canais as telas precisam receber; não presumir que toda a lista de eventos já é emitida pelo scheduler.
+- **Configurações domésticas:** faltam preferências de lembrete, resumo semanal e tema.
+- **Receitas — cobertura parcial implementada:** `/recipes` já oferece criação, listagem paginada, detalhe, atualização e exclusão (rotas herdadas de `BaseController`); `/ingredients` oferece gestão/listagem de ingredientes e consulta por receita/produto; IA expõe chat e sugestões baseadas no estoque. Ainda faltam favoritos, consulta estruturada de ingredientes disponíveis no estoque e sugestões gerais/não dependentes do chat, se exigidas pelas telas.
+- **Recuperação de senha:** autenticação expõe cadastro/login/refresh/logout e o perfil permite troca autenticada de senha; `/user/{id}/password` é reset administrativo. Falta fluxo público seguro de solicitação e conclusão por link/token de redefinição.
 
 ## Lacunas de contrato para as telas existentes
 
-- Estoque: `StockProductResponseDto` traz apenas `productId`; para renderizar nome, unidade, local e preço a tela precisa de produto expandido ou um endpoint de consulta em lote. Não há imagem, marca, lote, nem operação de remoção de estoque/produto.
-- Consumo: a tela doméstica pede consumo parcial com observação. A core-api oferece movimentação (`IN`, `OUT`, `ADJUSTMENT`), mas não aceita observação; `DiscardCreateRequestDto` não recebe quantidade. Definir qual dos dois representa consumo e completar o contrato.
-- Família: o convite visual usa nome, e-mail e permissão de edição/visualização. A core-api aceita somente `userId` de uma conta já existente e não possui papéis/permissões por membro nem convite por e-mail.
-- Chat: há REST e WebSocket, mas ainda faltam anexos/reações pesquisáveis que a interface sugere; confirmar escopo antes de criar.
-- Comercial: despesas, relatório mensal/exportação, compras concluídas com total/fornecedor e gestão de funcionários não têm endpoints/modelos correspondentes.
-- Planos: a tela apresenta benefícios e seleção; há catálogo e checkout, mas é preciso definir a operação que vincula a escolha ao fluxo de pagamento e o formato de apresentação dos benefícios.
+- **Consumo:** `POST /stock-products/{id}/movements` aceita tipo e quantidade (`IN`, `OUT`, `ADJUSTMENT`), mas não observação. Descarte já aceita quantidade e motivo (`POST /discard`). Definir se consumo parcial deve ser movimento `OUT` com observação, descarte, ou fluxo separado; completar o DTO escolhido.
+- **Família/grupo:** gestão de grupos/membros existe, mas adicionar membro recebe apenas `userId` de uma conta existente (`POST /groups/{id}/members`). Não há convite por e-mail/nome nem papel de edição/visualização por membro; o vínculo atual não modela permissões por membro.
+- **Chat:** REST/WebSocket e leitura de mensagens estão implementados. Há modelo de anexos, mas o contrato de envio não oferece anexos; não há reações nem busca de mensagens. Confirmar quais desses recursos a interface realmente requer.
+- **Comercial:** não foram encontrados endpoints/modelos dedicados a despesas, relatório mensal/exportação, compras concluídas com total/fornecedor ou gestão de funcionários. A lista de compras atual cobre itens e status, sem esses dados financeiros.
+- **Planos e pagamento:** catálogo, limites, assinatura, checkout e operações administrativas existem. Definir como a escolha de plano da tela deve iniciar/associar o checkout e como benefícios serão apresentados; confirmar se o contrato atual do plano expõe o conteúdo necessário.
+- **Catálogo de produtos:** CRUD existe, mas criação/edição/exclusão são restritas a ADMIN. Decidir se usuário comercial precisa de gestão própria e, se sim, definir autorização e escopo do catálogo.
+- **Estoque ativo:** chamadas de estoque exigem `groupId` e operações de itens dependem do estoque. Definir seleção/persistência de grupo e estoque ativo para evitar que cada chamada da interface tenha de resolver esse contexto separadamente.
 
-## Decisões necessárias
+## Decisões e prioridade
 
-1. Definir o grupo/estoque ativo do usuário para evitar enviar `groupId` em toda chamada de estoque.
-2. Definir se produtos do catálogo podem ser criados/geridos por usuário comercial, já que hoje o CRUD é administrativo.
-3. Priorizar lista de compras, alertas e resumo de estoque para liberar o fluxo doméstico de ponta a ponta.
+1. Priorizar resumo do estoque/dashboard, preferências de alertas e fluxo de lista de compras com os campos necessários às telas domésticas.
+2. Definir o contrato de consumo com observação e o modelo de convite/permissões de membros.
+3. Confirmar escopo de favoritos/sugestões de receitas, anexos/busca no chat e recuperação pública de senha.
+4. Fechar o fluxo de seleção de plano/checkout e o escopo comercial (compras, relatórios, despesas, funcionários e catálogo).
