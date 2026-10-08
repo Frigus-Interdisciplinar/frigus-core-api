@@ -36,7 +36,9 @@ public class NotificationController {
     @PostMapping("/ad-clicks")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Registrar o total de cliques para avisos empresariais a cada 2500 cliques")
-    public void reportAdClicks(@Valid @RequestBody AdClickReportRequestDto dto) {
-        notificationService.notifyAdClickMilestones(dto.getTotalClicks());
+    public void reportAdClicks(@Valid @RequestBody AdClickReportRequestDto dto,
+                               @RequestHeader("X-Ad-Clicks-Timestamp") long timestamp,
+                               @RequestHeader("X-Ad-Clicks-Signature") String signature) {
+        notificationService.notifyAdClickMilestones(dto.getTotalClicks(), timestamp, signature);
     }
 }
