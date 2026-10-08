@@ -6,13 +6,15 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: '${ALB_CERTIFICATE_ARN}'
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
     alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   ingressClassName: alb
   rules:
-    - host: api.example.com
+    - host: ${API_HOST}
       http:
         paths:
           - path: /

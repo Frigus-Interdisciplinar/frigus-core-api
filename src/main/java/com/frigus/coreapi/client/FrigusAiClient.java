@@ -21,7 +21,11 @@ public class FrigusAiClient {
 
     public FrigusAiClient(
             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
-            @Value("${FRIGUS_AI_API_KEY:}") String apiKey) {
+            @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
+            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
+        if (apiKeyRequired && (apiKey == null || apiKey.isBlank())) {
+            throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
+        }
         this.baseUrl = baseUrl;
         RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl);
         if (apiKey != null && !apiKey.isBlank()) {
@@ -70,12 +74,12 @@ public class FrigusAiClient {
 
             throw new ServiceUnavailableException("Resposta inválida da IA", "A inteligência artificial não retornou uma resposta válida.");
         } catch (RestClientException e) {
-            log.error("Serviço frigus_ai indisponível ou erro na chamada HTTP: {}", e.getMessage(), e);
+            log.error("Serviço frigus_ai indisponível ou erro na chamada HTTP");
             throw new ServiceUnavailableException("Serviço de IA indisponível", "O serviço de inteligência artificial está temporariamente indisponível. Tente novamente mais tarde.");
         } catch (ServiceUnavailableException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Erro inesperado ao chamar frigus_ai: {}", e.getMessage(), e);
+            log.error("Erro inesperado ao chamar frigus_ai");
             throw new ServiceUnavailableException("Erro ao processar IA", "Ocorreu uma falha ao comunicar com o assistente de inteligência artificial.");
         }
     }

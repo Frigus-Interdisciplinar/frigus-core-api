@@ -29,7 +29,7 @@ class FrigusAiClientTest {
 
     @BeforeEach
     void setUp() {
-        client = new FrigusAiClient("http://ai.example.test", "test-api-key");
+        client = new FrigusAiClient("http://ai.example.test", "test-api-key", true);
         RestClient.Builder builder = ((RestClient) ReflectionTestUtils.getField(client, "restClient")).mutate();
         server = MockRestServiceServer.bindTo(builder).build();
         // Bind the existing client to an in-memory HTTP transport; no real network requests.
@@ -88,6 +88,13 @@ class FrigusAiClientTest {
                 .andExpect(header("X-API-Key", "test-api-key"))
                 .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
         assertUnavailable(null);
+    }
+
+    @Test
+    void requiredApiKeyFailsBeforeAnyRequest() {
+        assertThatThrownBy(() -> new FrigusAiClient("http://ai.example.test", "", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageNotContaining("test-api-key");
     }
 
     private org.springframework.test.web.client.ResponseActions expectMessage(String session) {

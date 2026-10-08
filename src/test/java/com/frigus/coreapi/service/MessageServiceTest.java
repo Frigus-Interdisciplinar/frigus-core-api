@@ -10,6 +10,9 @@ import com.frigus.coreapi.model.ConversationParticipant;
 import com.frigus.coreapi.model.ConversationParticipantId;
 import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.Message;
+import com.frigus.coreapi.model.ShoppingListProduct;
+import com.frigus.coreapi.model.ShoppingList;
+import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.ConversationParticipantRepository;
 import com.frigus.coreapi.repository.ConversationRepository;
@@ -92,7 +95,9 @@ class MessageServiceTest {
     void repeatedReadReceiptDoesNotCreateDuplicateRecord() {
         UUID conversationId = sampleConversation.getId();
         when(conversationParticipantRepository.isUserActiveParticipant(conversationId, currentUser.getId())).thenReturn(true);
-        when(messageRepository.findById(1)).thenReturn(Optional.of(Message.builder().id(1).build()));
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(sampleConversation));
+        when(messageRepository.findById(1)).thenReturn(Optional.of(Message.builder().id(1)
+                .conversationParticipants(sampleParticipant).build()));
         when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(conversationId, currentUser.getId()))
                 .thenReturn(Optional.of(sampleParticipant));
         when(messageReadRepository.existsByIdMessageIdAndIdUserId(1, currentUser.getId())).thenReturn(true);
@@ -123,6 +128,9 @@ class MessageServiceTest {
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+
+    @Mock
+    private GroupAccessService groupAccessService;
 
     @InjectMocks
     private MessageService messageService;
@@ -242,6 +250,26 @@ class MessageServiceTest {
     }
 
     @Test
+    void rejectsRelatedItemFromAnotherGroupBeforeSavingMessage() {
+        Group group = Group.builder().id(UUID.randomUUID()).build();
+        sampleConversation.setGroup(group);
+        ShoppingListProduct item = ShoppingListProduct.builder()
+                .id(42)
+                .list(ShoppingList.builder().stock(Stock.builder()
+                        .group(Group.builder().id(UUID.randomUUID()).build()).build()).build())
+                .build();
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(
+                sampleConversation.getId(), currentUser.getId())).thenReturn(Optional.of(sampleParticipant));
+        when(shoppingListProductRepository.findById(42)).thenReturn(Optional.of(item));
+
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser, MessageSendDto.builder()
+                .conversationId(sampleConversation.getId()).relatedShoppingListProductId(42).content("x").build()))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messagingTemplate);
+    }
+
+    @Test
     @DisplayName("Deve lançar ForbiddenException ao tentar enviar mensagem para conversa onde não é participante")
     void shouldThrowForbiddenWhenNotParticipant() {
         MessageSendDto dto = MessageSendDto.builder()
@@ -263,6 +291,7 @@ class MessageServiceTest {
     void shouldGetMessagesHistory() {
         Pageable pageable = PageRequest.of(0, 10);
         when(conversationParticipantRepository.isUserActiveParticipant(sampleConversation.getId(), currentUser.getId())).thenReturn(true);
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
 
         Message msg = Message.builder().id(1).content("Mensagem").build();
         Page<Message> page = new PageImpl<>(List.of(msg));

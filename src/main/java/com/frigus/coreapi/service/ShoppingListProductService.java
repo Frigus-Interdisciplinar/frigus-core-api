@@ -29,22 +29,39 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
     private final ProductRepository productRepository;
     private final ShoppingListRepository shoppingListRepository;
     private final ShoppingListService shoppingListService;
+    private final GroupAccessService groupAccessService;
 
     public ShoppingListProductService(ShoppingListProductRepository repository, 
                                       ShoppingListProductMapper mapper,
                                       ProductRepository productRepository,
                                       ShoppingListRepository shoppingListRepository,
-                                      @Lazy ShoppingListService shoppingListService) {
+                                      @Lazy ShoppingListService shoppingListService,
+                                      GroupAccessService groupAccessService) {
         super(repository, mapper);
         this.productRepository = productRepository;
         this.shoppingListRepository = shoppingListRepository;
         this.shoppingListService = shoppingListService;
+        this.groupAccessService = groupAccessService;
+    }
+
+    private ShoppingList requireAccessibleList(UUID listId) {
+        ShoppingList list = shoppingListRepository.findById(listId).orElseThrow(NotFoundException::new);
+        groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
+        return list;
+    }
+
+    private ShoppingListProduct requireItem(UUID listId, Integer itemId) {
+        requireAccessibleList(listId);
+        ShoppingListProduct item = repository.findById(itemId).orElseThrow(NotFoundException::new);
+        if (!item.getList().getId().equals(listId)) {
+            throw new NotFoundException();
+        }
+        return item;
     }
 
     @Transactional
     public ShoppingListProductResponseDto addItem(UUID listId, ShoppingListProductCreateRequestDto dto) {
-        ShoppingList list = shoppingListRepository.findById(listId)
-                .orElseThrow(() -> new NotFoundException());
+        ShoppingList list = requireAccessibleList(listId);
 
         Product product = productRepository.findById(dto.getProductId())
                 .orElseThrow(() -> new NotFoundException());
@@ -67,8 +84,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
     
     @Transactional
     public void addItemBatch(UUID listId, List<ShoppingListProductCreateRequestDto> items) {
-        ShoppingList list = shoppingListRepository.findById(listId)
-                .orElseThrow(() -> new NotFoundException());
+        ShoppingList list = requireAccessibleList(listId);
 
         for (ShoppingListProductCreateRequestDto dto : items) {
             if (!repository.existsByListIdAndProductId(listId, dto.getProductId())) {
@@ -86,11 +102,15 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
         shoppingListService.checkAndAutoCloseList(listId);
     }
 
+    @Transactional(readOnly = true)
     public Page<ShoppingListProductResponseDto> findByListId(UUID listId, Pageable pageable) {
+        requireAccessibleList(listId);
         return repository.findByListId(listId, pageable).map(mapper::toDto);
     }
 
+    @Transactional(readOnly = true)
     public List<ShoppingListProductResponseDto> findByListId(UUID listId) {
+        requireAccessibleList(listId);
         return repository.findByListIdOrderByCreatedAtAsc(listId)
                 .stream()
                 .map(mapper::toDto)
@@ -99,12 +119,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
 
     @Transactional
     public ShoppingListProductResponseDto updateItem(UUID listId, Integer itemId, ShoppingListProductUpdateRequestDto dto) {
-        ShoppingListProduct item = repository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException());
-
-        if (!item.getList().getId().equals(listId)) {
-            throw new ConflictException();
-        }
+        ShoppingListProduct item = requireItem(listId, itemId);
 
         if (dto.getQuantity() != null) {
             item.setQuantity(dto.getQuantity());
@@ -122,12 +137,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
 
     @Transactional
     public ShoppingListProductResponseDto updateStatus(UUID listId, Integer itemId, ProductListStatus status) {
-        ShoppingListProduct item = repository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException());
-
-        if (!item.getList().getId().equals(listId)) {
-            throw new ConflictException();
-        }
+        ShoppingListProduct item = requireItem(listId, itemId);
 
         item.setStatus(status);
         item = repository.save(item);
@@ -139,12 +149,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
 
     @Transactional
     public void deleteItem(UUID listId, Integer itemId) {
-        ShoppingListProduct item = repository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException());
-
-        if (!item.getList().getId().equals(listId)) {
-            throw new ConflictException();
-        }
+        ShoppingListProduct item = requireItem(listId, itemId);
 
         repository.delete(item);
         shoppingListService.checkAndAutoCloseList(listId);
