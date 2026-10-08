@@ -35,6 +35,7 @@ class AuthServiceTest {
     @Mock private TokenProvider tokenProvider;
     @Mock private UserMapper userMapper;
     @Mock private RefreshTokenService refreshTokenService;
+    @Mock private GoogleTokenVerifierService googleTokenVerifierService;
     @InjectMocks private AuthService service;
 
     private User user;
@@ -124,4 +125,65 @@ class AuthServiceTest {
         service.logout(null);
         verify(refreshTokenService).deleteRefreshToken("refresh");
     }
+
+    @Test
+    void loginRejectsWhenUserHasNullPassword() {
+        user.setHashPassword(null);
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+
+        LoginRequestDto request = LoginRequestDto.builder().email(user.getEmail()).rawPassword("AnyPass123").build();
+        assertThatThrownBy(() -> service.login(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Conta vinculada ao Google");
+    }
+
+    @Test
+    void loginWithGoogleCreatesNewUserWhenNotFound() {
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email("novo@frigus.com")
+                .name("Novo Usuário")
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("novo@frigus.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tokenProvider.generateAccessToken(any(User.class))).thenReturn("access-token");
+        when(refreshTokenService.createRefreshToken(any())).thenReturn("refresh-token");
+        when(userMapper.toDto(any(User.class))).thenReturn(UserResponseDto.builder().email("novo@frigus.com").build());
+
+        var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        assertThat(captor.getValue().getGoogleId()).isEqualTo("google-123");
+        assertThat(captor.getValue().getHashPassword()).isNull();
+    }
+
+    @Test
+    void loginWithGoogleLinksGoogleIdWhenUserExistsByEmail() {
+        user.setGoogleId(null);
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email(user.getEmail())
+                .name(user.getName())
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+        when(tokenProvider.generateAccessToken(user)).thenReturn("access-token");
+        when(refreshTokenService.createRefreshToken(user.getId())).thenReturn("refresh-token");
+        when(userMapper.toDto(user)).thenReturn(UserResponseDto.builder().email(user.getEmail()).build());
+
+        var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        assertThat(user.getGoogleId()).isEqualTo("google-123");
+        verify(userRepository).save(user);
+    }
 }
+

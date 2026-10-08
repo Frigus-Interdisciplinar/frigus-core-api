@@ -1,9 +1,6 @@
 package com.frigus.coreapi.controller;
 
-import com.frigus.coreapi.dto.user.LoginRequestDto;
-import com.frigus.coreapi.dto.user.LoginResponseDto;
-import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
-import com.frigus.coreapi.dto.user.UserResponseDto;
+import com.frigus.coreapi.dto.user.*;
 import com.frigus.coreapi.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -34,6 +31,17 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body, HttpServletResponse response) {
         LoginResponseDto loginResponseDto = authService.login(body);
+
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+
+        return loginResponseDto;
+    }
+
+    @PostMapping("/google")
+    public LoginResponseDto loginWithGoogle(
+            @Valid @RequestBody GoogleLoginRequestDto body,
+            HttpServletResponse response) {
+        LoginResponseDto loginResponseDto = authService.loginWithGoogle(body);
 
         setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
 
