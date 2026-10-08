@@ -56,6 +56,12 @@ public class UserProfileService {
         User user = repository.findById(currentUser.getId())
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Erro ao resetar senha"));
 
+        if (user.getHashPassword() == null) {
+            user.setHashPassword(passwordEncoder.encode(dto.getNewPassword()));
+            repository.save(user);
+            return;
+        }
+
         if (!passwordEncoder.matches(dto.getOldPassword(), user.getHashPassword())) {
             throw new BadRequestException("Senha atual incorreta", "A senha atual informada está incorreta");
         }

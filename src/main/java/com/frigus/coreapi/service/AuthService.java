@@ -1,5 +1,6 @@
 package com.frigus.coreapi.service;
 
+import com.frigus.coreapi.dto.user.GoogleLoginRequestDto;
 import com.frigus.coreapi.dto.user.LoginRequestDto;
 import com.frigus.coreapi.dto.user.LoginResponseDto;
 import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.frigus.coreapi.service.GoogleTokenVerifierService.GoogleUserData;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,6 +32,7 @@ public class AuthService {
     private final TokenProvider tokenProvider;
     private final UserMapper userMapper;
     private final RefreshTokenService refreshTokenService;
+    private final GoogleTokenVerifierService googleTokenVerifierService;
 
     public UserResponseDto register(UserRegisterRequestDto body) {
         if (userRepository.existsByEmail(body.getEmail())) {
@@ -64,8 +67,42 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto body) {
         User user = userRepository.findByEmail(body.getEmail()).orElseThrow(() -> new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos"));
 
+        if (user.getHashPassword() == null) {
+            throw new BadRequestException("Conta vinculada ao Google", "Esta conta foi cadastrada utilizando o Google. Acesse usando 'Entrar com Google' ou redefina sua senha.");
+        }
+
         if (!passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
             throw new BadRequestException("Senha incorreta", "Senha incorreta");
+        }
+
+        return LoginResponseDto.builder()
+                .accessToken(tokenProvider.generateAccessToken(user))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId()))
+                .user(userMapper.toDto(user))
+                .build();
+    }
+
+    public LoginResponseDto loginWithGoogle(GoogleLoginRequestDto body) {
+        GoogleUserData googleData = googleTokenVerifierService.verify(body.getIdToken());
+
+        User user = userRepository.findByGoogleId(googleData.getGoogleId())
+                .orElseGet(() -> userRepository.findByEmail(googleData.getEmail()).orElse(null));
+
+        if (user != null) {
+            if (user.getGoogleId() == null) {
+                user.setGoogleId(googleData.getGoogleId());
+                user = userRepository.save(user);
+            }
+        } else {
+            user = User.builder()
+                    .email(googleData.getEmail())
+                    .googleId(googleData.getGoogleId())
+                    .name(googleData.getName())
+                    .accountType(AccountType.DOMESTIC)
+                    .role(Role.USER)
+                    .createdAt(Instant.now())
+                    .build();
+            user = userRepository.save(user);
         }
 
         return LoginResponseDto.builder()
