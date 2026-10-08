@@ -44,6 +44,7 @@ public class MessageService {
     private final ShoppingListProductRepository shoppingListProductRepository;
     private final MessageMapper messageMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final GroupAccessService groupAccessService;
 
     public Page<MessageResponseDto> getMessagesHistory(UUID conversationId, Pageable pageable) {
         User currentUser = requireCurrentUser();
@@ -83,9 +84,18 @@ public class MessageService {
                 .filter(p -> p.getLeftAt() == null)
                 .orElseThrow(() -> new ForbiddenException("Acesso negado", "Você não é participante ativo desta conversa"));
 
+        if (conversation.getGroup() != null) {
+            groupAccessService.requireGroupAccess(conversation.getGroup().getId());
+        }
+
         ShoppingListProduct shoppingListProduct = null;
         if (dto.getRelatedShoppingListProductId() != null) {
-            shoppingListProduct = shoppingListProductRepository.findById(dto.getRelatedShoppingListProductId()).orElse(null);
+            shoppingListProduct = shoppingListProductRepository.findById(dto.getRelatedShoppingListProductId())
+                    .orElseThrow(NotFoundException::new);
+            if (conversation.getGroup() == null || !shoppingListProduct.getList().getStock().getGroup().getId()
+                    .equals(conversation.getGroup().getId())) {
+                throw new ForbiddenException("Acesso negado", "Item fora do grupo da conversa");
+            }
         }
 
         MessageType type = dto.getMessageType() != null ? dto.getMessageType() : MessageType.TEXT;
@@ -135,6 +145,9 @@ public class MessageService {
 
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new NotFoundException("Mensagem não encontrada", "Mensagem com ID " + messageId + " não existe"));
+        if (!message.getConversationParticipants().getId().getConversationId().equals(conversationId)) {
+            throw new NotFoundException();
+        }
 
         ConversationParticipant cp = conversationParticipantRepository
                 .findByIdConversationIdAndIdUserId(conversationId, currentUser.getId())
@@ -161,6 +174,10 @@ public class MessageService {
     public void validateActiveParticipant(UUID conversationId, UUID userId) {
         if (!conversationParticipantRepository.isUserActiveParticipant(conversationId, userId)) {
             throw new ForbiddenException("Acesso negado", "Você não é participante ativo desta conversa");
+        }
+        Conversation conversation = conversationRepository.findById(conversationId).orElseThrow(NotFoundException::new);
+        if (conversation.getGroup() != null) {
+            groupAccessService.requireGroupAccess(conversation.getGroup().getId());
         }
     }
 
