@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -81,6 +82,7 @@ class ApiIntegrationTest {
 
     @Autowired WebApplicationContext context;
     @Autowired JdbcTemplate jdbc;
+    @Autowired StringRedisTemplate redis;
     @Autowired UserRepository users;
     @Autowired TokenProvider tokens;
     @Autowired PasswordEncoder passwords;
@@ -248,6 +250,78 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED")).andExpect(header().doesNotExist("Set-Cookie"));
     }
 
+    @Test
+    void corsAllowsConfiguredOriginAndRejectsOtherOrigins() throws Exception {
+        mvc.perform(options("/auth/login").header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"));
+        mvc.perform(options("/auth/login").header("Origin", "https://evil.example.test")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
+    void cookieMutationRequiresCsrfToken() throws Exception {
+        Cookie authCookie = new Cookie("accessToken", tokens.generateAccessToken(owner));
+        mvc.perform(post("/shopping-lists").cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isForbidden());
+        assertThat(count("shopping_lists")).isZero();
+
+        var csrfResponse = mvc.perform(get("/auth/csrf")).andExpect(status().isOk()).andReturn().getResponse();
+        String csrfToken = json.readTree(csrfResponse.getContentAsString()).get("token").asString();
+        Cookie csrfCookie = csrfResponse.getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getSecure()).isTrue();
+        mvc.perform(post("/auth/refresh").cookie(csrfCookie, new Cookie("refreshToken", "invalid"))
+                        .header("X-XSRF-TOKEN", csrfToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void bearerMutationWorksWithCookiesButCookieRefreshStillRequiresCsrf() throws Exception {
+        Cookie authCookie = new Cookie("accessToken", tokens.generateAccessToken(outsider));
+        mvc.perform(as(post("/shopping-lists"), owner).cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isCreated());
+        assertThat(count("shopping_lists")).isEqualTo(1);
+
+        mvc.perform(post("/shopping-lists").header("Authorization", "Bearer invalid").cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isForbidden());
+        assertThat(count("shopping_lists")).isEqualTo(1);
+
+        mvc.perform(post("/auth/refresh").header("Authorization", "Bearer " + tokens.generateAccessToken(owner))
+                        .cookie(new Cookie("refreshToken", "some-refresh")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void registrationWorksWithStaleAuthCookie() throws Exception {
+        mvc.perform(post("/auth/register").cookie(new Cookie("accessToken", "stale"))
+                        .contentType("application/json")
+                        .content("{\"name\":\"New User\",\"email\":\"new@example.test\",\"birthDate\":\"01/01/1990\",\"rawPassword\":\"Strong123!\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void authenticationRateLimitReturnsRetryAfter() throws Exception {
+        redis.delete("rate-limit:/auth/login:ip:127.0.0.1");
+        for (int i = 0; i < 10; i++) {
+            mvc.perform(post("/auth/login").contentType("application/json")
+                    .content("{\"email\":\"unknown@example.test\",\"rawPassword\":\"Strong123!\"}"))
+                    .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(post("/auth/login").contentType("application/json")
+                        .content("{\"email\":\"unknown@example.test\",\"rawPassword\":\"Strong123!\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"));
+        redis.delete("rate-limit:/auth/login:ip:127.0.0.1");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"/stocks/1", "/stock-products/1", "/stock-products/1/movements"})
     void deniesOutsiderReadingAnotherGroupsResources(String route) throws Exception {
@@ -261,6 +335,57 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].groupId").value(groupId.toString()));
         mvc.perform(as(get("/stocks").param("groupId", groupId.toString()), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(get("/stocks/" + stockId), admin)).andExpect(status().isOk());
+    }
+
+    @Test
+    void shoppingListsAndItemsStayWithinCurrentGroups() throws Exception {
+        UUID ownList = jdbc.queryForObject("INSERT INTO shopping_lists(stock_id,status) VALUES (?, 'OPEN') RETURNING id",
+                UUID.class, stockId);
+        int foreignStock = jdbc.queryForObject("INSERT INTO stocks(group_id,name) VALUES (?, 'Other') RETURNING id",
+                Integer.class, otherGroupId);
+        UUID foreignList = jdbc.queryForObject("INSERT INTO shopping_lists(stock_id,status) VALUES (?, 'OPEN') RETURNING id",
+                UUID.class, foreignStock);
+        int foreignItem = jdbc.queryForObject("INSERT INTO shopping_list_products(list_id,product_id,status,quantity) " +
+                "VALUES (?, ?, 'PENDING', 2) RETURNING id", Integer.class, foreignList, productId);
+
+        mvc.perform(as(get("/shopping-lists"), owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(ownList.toString()));
+        mvc.perform(as(get("/shopping-lists").param("status", "OPEN"), outsider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(as(get("/shopping-lists").param("groupId", otherGroupId.toString()), owner))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/shopping-lists/" + foreignList + "/items"), owner)).andExpect(status().isForbidden());
+        mvc.perform(as(post("/shopping-lists/" + foreignList + "/items"), owner)
+                .contentType("application/json").content("{\"productId\":" + productId + ",\"quantity\":1}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(post("/shopping-lists/" + foreignList + "/items/batch"), owner)
+                .contentType("application/json").content("[{\"productId\":" + productId + ",\"quantity\":1}]"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(put("/shopping-lists/" + ownList + "/items/" + foreignItem), owner)
+                .contentType("application/json").content("{\"quantity\":9}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(as(delete("/shopping-lists/" + foreignList + "/items/" + foreignItem), owner))
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT quantity FROM shopping_list_products WHERE id=?", Integer.class, foreignItem))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void discardCannotReadOrChangeAnotherGroupsStock() throws Exception {
+        int discardId = jdbc.queryForObject("INSERT INTO \"discard\"(stock_product_id,quantity) VALUES (?, 1) RETURNING id",
+                Integer.class, itemId);
+        mvc.perform(as(get("/discard"), outsider)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(as(get("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(post("/discard"), outsider).contentType("application/json")
+                .content("{\"stockProductId\":" + itemId + ",\"quantity\":2}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
+        assertThat(balance()).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"discard\" WHERE id=?", Integer.class, discardId))
+                .isEqualTo(1);
+        mvc.perform(as(get("/discard/" + discardId), admin)).andExpect(status().isOk());
     }
 
     @Test
