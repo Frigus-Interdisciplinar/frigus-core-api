@@ -330,6 +330,7 @@ CREATE TABLE "discard" (
   id SERIAL PRIMARY KEY,
   stock_product_id INTEGER NOT NULL,
   reason TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
   date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_discard_stock_product_id_stock_products FOREIGN KEY (stock_product_id) REFERENCES stock_products (id) ON DELETE CASCADE
