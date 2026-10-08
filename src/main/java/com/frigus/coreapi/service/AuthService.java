@@ -65,7 +65,7 @@ public class AuthService {
         User user = userRepository.findByEmail(body.getEmail()).orElseThrow(() -> new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos"));
 
         if (!passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
-            throw new BadRequestException("Senha incorreta", "Senha incorreta");
+            throw new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos");
         }
 
         return LoginResponseDto.builder()
