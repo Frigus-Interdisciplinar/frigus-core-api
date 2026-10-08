@@ -22,7 +22,7 @@ import org.springframework.web.client.RestTemplate;
 public class GoogleTokenVerifierService {
 
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     @Value("${google.client-id:}")
     private String configuredClientId;
