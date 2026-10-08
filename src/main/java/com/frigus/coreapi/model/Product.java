@@ -50,6 +50,12 @@ public class Product {
     @Column(name = "unit_of_measure", nullable = false, columnDefinition = "unit_of_measure_enum")
     private UnitOfMeasure unitOfMeasure;
 
+    @Column(name = "brand", length = 120)
+    private String brand;
+
+    @Column(name = "image_url", length = 2048)
+    private String imageUrl;
+
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)

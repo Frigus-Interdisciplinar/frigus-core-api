@@ -215,6 +215,8 @@ CREATE TABLE products (
   storage_place storage_place_enum NOT NULL,
   unit_price NUMERIC(10, 2) NOT NULL,
   unit_of_measure unit_of_measure_enum NOT NULL,
+  brand VARCHAR(120),
+  image_url VARCHAR(2048),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -251,6 +253,7 @@ CREATE TABLE stock_products (
   stock_id INTEGER NOT NULL,
   quantity INTEGER NOT NULL,
   minimal_quantity INTEGER,
+  purchase_unit_price NUMERIC(10, 2),
   expire_date DATE NOT NULL,
   product_status product_status_enum,
   category category_enum NOT NULL,
@@ -258,6 +261,7 @@ CREATE TABLE stock_products (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_stock_products_product_stock_expire UNIQUE (product_id, stock_id, expire_date),
   CONSTRAINT chk_stock_products_minimal_quantity CHECK (minimal_quantity IS NULL OR minimal_quantity >= 0),
+  CONSTRAINT chk_stock_products_purchase_unit_price CHECK (purchase_unit_price IS NULL OR purchase_unit_price > 0),
   CONSTRAINT fk_stock_products_product_id_products FOREIGN KEY (product_id) REFERENCES products (id),
   CONSTRAINT fk_stock_products_stock_id_stocks FOREIGN KEY (stock_id) REFERENCES stocks (id) ON DELETE CASCADE
 );

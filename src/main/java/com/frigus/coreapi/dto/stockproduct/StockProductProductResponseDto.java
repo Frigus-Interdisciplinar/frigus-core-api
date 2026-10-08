@@ -1,4 +1,4 @@
-package com.frigus.coreapi.dto.product;
+package com.frigus.coreapi.dto.stockproduct;
 
 import com.frigus.coreapi.enums.Category;
 import com.frigus.coreapi.enums.StoragePlace;
@@ -10,14 +10,13 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProductResponseDto {
+public class StockProductProductResponseDto {
     private Integer id;
     private String name;
     private Category category;
@@ -26,5 +25,4 @@ public class ProductResponseDto {
     private UnitOfMeasure unitOfMeasure;
     private String brand;
     private String imageUrl;
-    private Instant createdAt;
 }

@@ -11,6 +11,7 @@ import org.hibernate.annotations.OnDeleteAction;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -42,6 +43,9 @@ public class StockProduct {
 
     @Column(name = "minimal_quantity")
     private Integer minimalQuantity;
+
+    @Column(name = "purchase_unit_price", precision = 10, scale = 2)
+    private BigDecimal purchaseUnitPrice;
 
     @NotNull
     @Column(name = "expire_date", nullable = false)

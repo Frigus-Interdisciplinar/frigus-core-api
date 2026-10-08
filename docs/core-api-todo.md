@@ -13,7 +13,6 @@ Este documento reúne capacidades das telas que ainda precisam de contrato ou im
 
 ## Lacunas de contrato para as telas existentes
 
-- Estoque: `StockProductResponseDto` traz apenas `productId`; para renderizar nome, unidade, local e preço a tela precisa de produto expandido ou um endpoint de consulta em lote. Não há imagem, marca, lote, nem operação de remoção de estoque/produto.
 - Consumo: a tela doméstica pede consumo parcial com observação. A core-api oferece movimentação (`IN`, `OUT`, `ADJUSTMENT`), mas não aceita observação; `DiscardCreateRequestDto` não recebe quantidade. Definir qual dos dois representa consumo e completar o contrato.
 - Família: o convite visual usa nome, e-mail e permissão de edição/visualização. A core-api aceita somente `userId` de uma conta já existente e não possui papéis/permissões por membro nem convite por e-mail.
 - Chat: há REST e WebSocket, mas ainda faltam anexos/reações pesquisáveis que a interface sugere; confirmar escopo antes de criar.

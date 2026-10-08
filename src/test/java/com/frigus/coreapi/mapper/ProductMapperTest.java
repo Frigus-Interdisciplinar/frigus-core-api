@@ -24,10 +24,14 @@ class ProductMapperTest {
                 .storagePlace(StoragePlace.FRIDGE)
                 .unitPrice(new BigDecimal("8.50"))
                 .unitOfMeasure(UnitOfMeasure.LITER)
+                .brand("Marca")
+                .imageUrl("https://cdn.example.test/milk.png")
                 .createdAt(Instant.parse("2026-01-01T00:00:00Z"))
                 .build();
 
         assertThat(mapper.toDto(product).getName()).isEqualTo("Leite");
+        assertThat(mapper.toDto(product).getBrand()).isEqualTo("Marca");
+        assertThat(mapper.toDto(product).getImageUrl()).isEqualTo("https://cdn.example.test/milk.png");
         assertThat(mapper.toDto(null)).isNull();
 
         Product entity = mapper.toEntity(ProductCreateRequestDto.builder()
@@ -36,10 +40,14 @@ class ProductMapperTest {
                 .storagePlace(StoragePlace.FRIDGE)
                 .unitPrice(new BigDecimal("8.50"))
                 .unitOfMeasure(UnitOfMeasure.LITER)
+                .brand("  Marca  ")
+                .imageUrl("  https://cdn.example.test/milk.png  ")
                 .build());
 
         assertThat(entity.getName()).isEqualTo("Leite");
         assertThat(entity.getUnitOfMeasure()).isEqualTo(UnitOfMeasure.LITER);
+        assertThat(entity.getBrand()).isEqualTo("Marca");
+        assertThat(entity.getImageUrl()).isEqualTo("https://cdn.example.test/milk.png");
         assertThat(mapper.toEntity(null)).isNull();
     }
 }
