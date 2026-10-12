@@ -36,7 +36,7 @@ public class SecurityConfig {
                                            RateLimitFilter rateLimitFilter,
                                            CorsConfigurationSource corsConfigurationSource) throws Exception {
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
-        csrfRepository.setCookieCustomizer(cookie -> cookie.secure(true).sameSite("Lax"));
+        csrfRepository.setCookieCustomizer(cookie -> cookie.secure(true).sameSite("None"));
         http.cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
