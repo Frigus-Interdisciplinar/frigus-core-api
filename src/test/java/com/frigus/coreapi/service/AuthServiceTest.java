@@ -94,7 +94,7 @@ class AuthServiceTest {
 
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
         assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("wrong").build()))
-                .isInstanceOf(BadRequestException.class).hasMessage("Senha incorreta");
+                .isInstanceOf(UnauthorizedException.class).hasMessage("Credenciais inválidas");
         when(userRepository.findByEmail("missing@frigus.com")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email("missing@frigus.com").rawPassword("x").build()))
                 .isInstanceOf(UnauthorizedException.class);

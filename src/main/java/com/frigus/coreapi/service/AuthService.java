@@ -72,7 +72,7 @@ public class AuthService {
         }
 
         if (!passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
-            throw new BadRequestException("Senha incorreta", "Senha incorreta");
+            throw new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos");
         }
 
         return LoginResponseDto.builder()

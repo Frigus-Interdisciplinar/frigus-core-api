@@ -68,11 +68,11 @@ public class PlanLimitsResolverService {
         BigDecimal costPerPublishedAd = BigDecimal.ZERO;
         boolean hasMonthlyReport = false;
 
-        switch (planCode) {
-            case FREE:
+        switch (planCode.name()) {
+            case "FREE":
                 maxGroupsCreated = 0;
                 break;
-            case PLUS:
+            case "PLUS":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 5;
                 maxStocks = 3;
@@ -81,7 +81,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case FAMILY:
+            case "FAMILY":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 10;
                 maxStocks = 5;
@@ -90,7 +90,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case COMMERCIAL:
+            case "COMMERCIAL":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 20;
                 maxStocks = 10;
@@ -99,7 +99,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case ENTERPRISE:
+            case "ENTERPRISE":
                 maxGroupsCreated = 1;
                 maxGroupMembers = Integer.MAX_VALUE;
                 maxStocks = Integer.MAX_VALUE;
