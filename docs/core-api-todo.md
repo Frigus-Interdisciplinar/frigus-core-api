@@ -20,7 +20,9 @@ Não recriar estas capacidades como se estivessem ausentes:
 - Comercial: despesas, relatório mensal/CSV, funcionários e convites.
 - Planos e cobrança: catálogo, limites, seleção via checkout e transações.
 - Recuperação de senha: solicitar código, validar e redefinir senha com código
-  temporário enviado por e-mail.
+  temporário enviado por e-mail. A entrega usa Brevo; configure `BREVO_API_KEY`,
+  `BREVO_SENDER_EMAIL` (remetente validado) e, se necessário, `BREVO_API_URL` e
+  `BREVO_SENDER_NAME` no ambiente da aplicação.
 
 ## Lacunas reais
 
