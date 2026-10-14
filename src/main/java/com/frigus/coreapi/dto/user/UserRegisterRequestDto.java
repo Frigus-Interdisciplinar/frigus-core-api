@@ -5,6 +5,7 @@ import jakarta.validation.constraints.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import com.frigus.coreapi.enums.AccountType;
 
 @Builder
 @Getter
@@ -30,4 +31,6 @@ public class UserRegisterRequestDto {
         message = "A senha deve conter de 8 a 20 caracteres, contendo pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial"
     )
     private String rawPassword;
+
+    private AccountType accountType;
 }

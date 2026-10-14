@@ -59,7 +59,9 @@ public class PlanLimitsResolverService {
 
         switch (planCode) {
             case FREE:
-                maxGroupsCreated = 0;
+                // Every account needs a private group to store its own inventory.
+                maxGroupsCreated = 1;
+                allowOwnProducts = true;
                 break;
             case PLUS:
                 maxGroupsCreated = 1;

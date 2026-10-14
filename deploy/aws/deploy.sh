@@ -56,7 +56,7 @@ kubectl -n "$KUBE_NAMESPACE" apply -f "$ROOT_DIR/deploy/k8s/configmap.yaml"
 
 echo "Atualizando Secret do Kubernetes a partir do .env..."
 secret_arguments=()
-for secret_key in DATABASE_URL DATABASE_USERNAME DATABASE_PASSWORD REDIS_URL JWT_SECRET JWT_EXPIRATION; do
+for secret_key in DATABASE_URL DATABASE_USERNAME DATABASE_PASSWORD REDIS_URL JWT_SECRET JWT_EXPIRATION BREVO_API_KEY BREVO_SENDER_EMAIL BREVO_SENDER_NAME; do
   secret_value="$(awk -F= -v key="$secret_key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$ROOT_DIR/.env")"
   if [[ -z "$secret_value" ]]; then
     echo "Erro: variável obrigatória ausente no .env: $secret_key" >&2
