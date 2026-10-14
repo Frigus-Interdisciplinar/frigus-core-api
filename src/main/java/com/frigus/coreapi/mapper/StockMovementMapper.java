@@ -15,6 +15,7 @@ public class StockMovementMapper implements BaseMapper<StockMovement, StockMovem
                 .userId(movement.getUser().getId())
                 .movementType(movement.getMovementType())
                 .quantity(movement.getQuantity())
+                .reasonCode(movement.getReasonCode())
                 .balanceAfter(movement.getBalanceAfter())
                 .date(movement.getDate())
                 .build();
@@ -25,6 +26,7 @@ public class StockMovementMapper implements BaseMapper<StockMovement, StockMovem
         return StockMovement.builder()
                 .movementType(dto.getMovementType())
                 .quantity(dto.getQuantity())
+                .reasonCode(dto.getReasonCode())
                 .build();
     }
 }

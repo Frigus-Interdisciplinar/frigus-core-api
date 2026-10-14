@@ -14,6 +14,7 @@ import com.frigus.coreapi.repository.StockProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -22,15 +23,25 @@ import java.time.Instant;
 public class StockMovementService extends BaseService<StockMovement, Integer, StockMovementCreateRequestDto, StockMovementResponseDto, StockMovementMapper, StockMovementRepository> {
     private final StockProductRepository stockProductRepository;
     private final GroupAccessService groupAccessService;
+    private final MoneySavingLedgerService ledger;
 
+    @Autowired
     public StockMovementService(
             StockMovementRepository repository,
             StockMovementMapper mapper,
             StockProductRepository stockProductRepository,
-            GroupAccessService groupAccessService) {
+            GroupAccessService groupAccessService,
+            MoneySavingLedgerService ledger) {
         super(repository, mapper);
         this.stockProductRepository = stockProductRepository;
         this.groupAccessService = groupAccessService;
+        this.ledger = ledger;
+    }
+
+    // Existing service tests exercise balance behavior without a database ledger.
+    public StockMovementService(StockMovementRepository repository, StockMovementMapper mapper,
+            StockProductRepository stockProductRepository, GroupAccessService groupAccessService) {
+        this(repository, mapper, stockProductRepository, groupAccessService, null);
     }
 
     @Override
@@ -47,11 +58,16 @@ public class StockMovementService extends BaseService<StockMovement, Integer, St
 
     @Transactional
     public StockMovementResponseDto create(Integer stockProductId, StockMovementCreateRequestDto dto) {
+        if (dto.getReasonCode() != null &&
+                (!"CONSUMED".equals(dto.getReasonCode()) || dto.getMovementType() != MovementType.OUT)) {
+            throw new BadRequestException("Motivo inválido", "CONSUMED é permitido apenas para saídas OUT");
+        }
         StockProduct stockProduct = stockProductRepository.findByIdForUpdate(stockProductId)
                 .orElseThrow(() -> new NotFoundException("Produto do estoque não encontrado", "O item informado não existe"));
         groupAccessService.requireGroupAccess(stockProduct.getStock().getGroup().getId());
 
-        int balanceAfter = calculateBalanceAfter(stockProduct.getQuantity(), dto);
+        int balanceBefore = stockProduct.getQuantity();
+        int balanceAfter = calculateBalanceAfter(balanceBefore, dto);
         stockProduct.setQuantity(balanceAfter);
 
         User user = groupAccessService.requireCurrentUser();
@@ -62,7 +78,14 @@ public class StockMovementService extends BaseService<StockMovement, Integer, St
         movement.setDate(Instant.now());
 
         stockProductRepository.save(stockProduct);
-        return mapToDto(repository.save(movement));
+        stockProductRepository.flush();
+        StockMovement saved = repository.save(movement);
+        repository.flush();
+        if (ledger != null && balanceAfter != balanceBefore) {
+            ledger.recordMovement(stockProduct, balanceBefore, balanceAfter - balanceBefore,
+                    dto.getReasonCode(), saved.getId(), saved.getDate());
+        }
+        return mapToDto(saved);
     }
 
     private StockProduct getRequiredStockProduct(Integer stockProductId) {

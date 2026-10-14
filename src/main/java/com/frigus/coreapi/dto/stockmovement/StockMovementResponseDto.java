@@ -21,6 +21,7 @@ public class StockMovementResponseDto {
     private UUID userId;
     private MovementType movementType;
     private Integer quantity;
+    private String reasonCode;
     private Integer balanceAfter;
     private Instant date;
 }

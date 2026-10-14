@@ -34,6 +34,11 @@ public class Group {
     private String bannerPicture;
 
     @NotNull
+    @Column(name = "time_zone", nullable = false, length = 80)
+    @Builder.Default
+    private String timeZone = "America/Sao_Paulo";
+
+    @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

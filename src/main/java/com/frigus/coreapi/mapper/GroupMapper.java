@@ -30,6 +30,7 @@ public class GroupMapper implements BaseMapper<Group, GroupResponseDto, GroupCre
                 .isOwner(ownerId != null && ownerId.equals(currentUserId))
                 .name(group.getName())
                 .bannerPicture(group.getBannerPicture())
+                .timeZone(group.getTimeZone())
                 .createdAt(group.getCreatedAt())
                 .updatedAt(group.getUpdatedAt())
                 .build();
@@ -58,6 +59,7 @@ public class GroupMapper implements BaseMapper<Group, GroupResponseDto, GroupCre
                 .defaultConversationId(defaultConversationId)
                 .name(group.getName())
                 .bannerPicture(group.getBannerPicture())
+                .timeZone(group.getTimeZone())
                 .membersCount(memberDtos.size())
                 .members(memberDtos)
                 .createdAt(group.getCreatedAt())
@@ -90,6 +92,7 @@ public class GroupMapper implements BaseMapper<Group, GroupResponseDto, GroupCre
         return Group.builder()
                 .name(dto.getName())
                 .bannerPicture(dto.getBannerPicture())
+                .timeZone(dto.getTimeZone() == null ? "America/Sao_Paulo" : dto.getTimeZone())
                 .build();
     }
 }

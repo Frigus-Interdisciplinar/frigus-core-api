@@ -10,4 +10,5 @@ import lombok.*;
 public class GroupUpdateRequestDto {
     private String name;
     private String bannerPicture;
+    private String timeZone;
 }
