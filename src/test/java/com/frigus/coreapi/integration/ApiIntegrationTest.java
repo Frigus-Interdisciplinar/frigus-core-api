@@ -239,7 +239,7 @@ class ApiIntegrationTest {
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString()).andReturn().getResponse();
         assertThat(login.getHeaders("Set-Cookie")).hasSize(2).allSatisfy(cookie ->
-                assertThat(cookie).contains("HttpOnly", "Path=/", "SameSite=Lax"));
+                assertThat(cookie).contains("HttpOnly", "Secure", "Path=/", "SameSite=None"));
         mvc.perform(post("/auth/register").contentType("application/json").content(registration)).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email='new@example.test'", Integer.class)).isEqualTo(1);
     }
