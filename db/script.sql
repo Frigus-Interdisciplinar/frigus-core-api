@@ -94,6 +94,7 @@ CREATE TYPE transaction_status_enum AS ENUM(
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR NOT NULL,
+  profile_picture_url VARCHAR(2048),
   birth_date DATE,
   account_type account_type_enum NOT NULL,
   role user_role_enum NOT NULL DEFAULT 'USER',
