@@ -47,6 +47,9 @@ public class UserProfileService {
         if (dto.getBirthDate() != null) {
             user.setBirthDate(dto.getBirthDate());
         }
+        if (dto.getProfilePictureUrl() != null) {
+            user.setProfilePictureUrl(dto.getProfilePictureUrl());
+        }
 
         User savedUser = repository.save(user);
         return mapper.toDto(savedUser);
