@@ -46,7 +46,7 @@ public class AuthService {
                 .hashPassword(hashPassword)
                 .birthDate(body.getBirthDate())
                 .name(body.getName())
-                .accountType(AccountType.DOMESTIC)
+                .accountType(body.getAccountType() == null ? AccountType.DOMESTIC : body.getAccountType())
                 .role(Role.USER)
                 .createdAt(Instant.now())
                 .build();

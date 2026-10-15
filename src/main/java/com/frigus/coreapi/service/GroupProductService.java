@@ -1,6 +1,5 @@
 package com.frigus.coreapi.service;
 import com.frigus.coreapi.dto.product.*;
-import com.frigus.coreapi.enums.AccountType;
 import com.frigus.coreapi.exception.*;
 import com.frigus.coreapi.model.*;
 import com.frigus.coreapi.repository.*;
@@ -35,7 +34,6 @@ public class GroupProductService {
  }
  private Group requireWrite(UUID groupId){
   var group=context.resolveGroup(groupId);access.requireGroupWriteAccess(groupId);
-  if(group.getOwner().getAccountType()!=AccountType.COMMERCIAL) throw new ForbiddenException("Catálogo próprio comercial","Este recurso exige um grupo comercial");
   if(!limits.getLimitsForUser(group.getOwner().getId()).isAllowOwnProducts()) throw new ForbiddenException("Plano não permite produtos próprios","Escolha um plano com catálogo próprio");
   return groups.findByIdForUpdate(groupId).orElseThrow(NotFoundException::new);
  }
