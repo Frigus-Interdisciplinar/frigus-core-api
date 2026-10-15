@@ -5,6 +5,8 @@ import com.frigus.coreapi.dto.discard.DiscardResponseDto;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.DiscardMapper;
 import com.frigus.coreapi.model.Discard;
+import com.frigus.coreapi.model.Group;
+import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.StockProduct;
 import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.Group;
@@ -25,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class DiscardServiceTest {
@@ -61,7 +64,7 @@ class DiscardServiceTest {
                 .build();
         DiscardResponseDto response = DiscardResponseDto.builder().id(3).stockProductId(12).build();
 
-        when(stockProductRepository.findById(12)).thenReturn(Optional.of(stockProduct));
+        when(stockProductRepository.findByIdForUpdate(12)).thenReturn(Optional.of(stockProduct));
         when(discardMapper.toEntity(request)).thenReturn(discard);
         when(discardRepository.save(discard)).thenReturn(savedDiscard);
         when(discardMapper.toDto(savedDiscard)).thenReturn(response);
@@ -83,8 +86,28 @@ class DiscardServiceTest {
                 .quantity(2)
                 .reason("Produto vencido")
                 .build();
-        when(stockProductRepository.findById(999)).thenReturn(Optional.empty());
+        when(stockProductRepository.findByIdForUpdate(999)).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> discardService.create(request));
+    }
+
+    @Test
+    void cancelRestoresQuantityAndFinancialAllocation() {
+        var access = mock(GroupAccessService.class);
+        var ledger = mock(MoneySavingLedgerService.class);
+        var service = new DiscardService(discardRepository, discardMapper, stockProductRepository, access, ledger);
+        var groupId = UUID.randomUUID();
+        var item = StockProduct.builder().id(12).quantity(3)
+                .stock(Stock.builder().group(Group.builder().id(groupId).build()).build()).build();
+        var discard = Discard.builder().id(7).stockProduct(item).quantity(2).build();
+        when(discardRepository.findById(7)).thenReturn(Optional.of(discard));
+        when(stockProductRepository.findByIdForUpdate(12)).thenReturn(Optional.of(item));
+
+        service.delete(7);
+
+        assertEquals(5, item.getQuantity());
+        assertNotNull(discard.getCanceledAt());
+        verify(access).requireGroupAccess(groupId);
+        verify(ledger).cancelDiscard(7, 12);
     }
 }

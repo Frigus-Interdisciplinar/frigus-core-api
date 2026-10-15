@@ -26,6 +26,12 @@ DROP TABLE IF EXISTS messages CASCADE;
 
 DROP TABLE IF EXISTS conversation_participants CASCADE;
 
+DROP TABLE IF EXISTS food_purchase_revisions CASCADE;
+DROP TABLE IF EXISTS money_allocations CASCADE;
+DROP TABLE IF EXISTS money_exits CASCADE;
+DROP TABLE IF EXISTS money_supplies CASCADE;
+DROP TABLE IF EXISTS food_purchase_lines CASCADE;
+DROP TABLE IF EXISTS food_purchases CASCADE;
 DROP TABLE IF EXISTS stock_movements CASCADE;
 
 DROP TABLE IF EXISTS shopping_list_products CASCADE;
@@ -181,6 +187,7 @@ CREATE TABLE groups (
   owner_id UUID NOT NULL,
   name VARCHAR NOT NULL,
   banner_picture TEXT,
+  time_zone VARCHAR(80) NOT NULL DEFAULT 'America/Sao_Paulo',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
@@ -331,6 +338,8 @@ CREATE TABLE "discard" (
   stock_product_id INTEGER NOT NULL,
   quantity INTEGER,
   reason TEXT,
+  reason_code VARCHAR(24),
+  canceled_at TIMESTAMPTZ,
   date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_discard_stock_product_id_stock_products FOREIGN KEY (stock_product_id) REFERENCES stock_products (id) ON DELETE CASCADE
@@ -354,10 +363,96 @@ CREATE TABLE stock_movements (
   stock_product_id INTEGER NOT NULL,
   user_id UUID NOT NULL,
   movement_type movement_type_enum NOT NULL,
+  reason_code VARCHAR(24),
   quantity INTEGER NOT NULL,
   date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_stock_movements_stock_product_id_stock_products FOREIGN KEY (stock_product_id) REFERENCES stock_products (id) ON DELETE CASCADE,
   CONSTRAINT fk_stock_movements_user_id_users FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE food_purchases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES groups(id),
+  purchase_date DATE NOT NULL,
+  source VARCHAR(24) NOT NULL CHECK (source IN ('USER_CONFIRMED', 'RECEIPT_CAPTURED')),
+  receipt_reference VARCHAR(160),
+  idempotency_key VARCHAR(160) NOT NULL,
+  request_hash VARCHAR(64) NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
+  UNIQUE (group_id, idempotency_key)
+);
+CREATE UNIQUE INDEX uq_food_purchases_receipt ON food_purchases(group_id, receipt_reference)
+  WHERE receipt_reference IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE food_purchase_lines (
+  id BIGSERIAL PRIMARY KEY,
+  purchase_id UUID NOT NULL REFERENCES food_purchases(id),
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  category VARCHAR(24) NOT NULL,
+  category_group VARCHAR(24) NOT NULL,
+  unit_of_measure VARCHAR(24) NOT NULL,
+  expire_date DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price > 0)
+);
+CREATE INDEX idx_food_purchase_lines_purchase ON food_purchase_lines(purchase_id);
+
+CREATE TABLE money_supplies (
+  id BIGSERIAL PRIMARY KEY,
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  purchase_line_id BIGINT UNIQUE REFERENCES food_purchase_lines(id),
+  available_on DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unknown_cost BOOLEAN NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_money_supplies_stock ON money_supplies(stock_key, available_on, id);
+
+CREATE TABLE money_exits (
+  id BIGSERIAL PRIMARY KEY,
+  group_id UUID NOT NULL REFERENCES groups(id),
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  category VARCHAR(24) NOT NULL,
+  unit_of_measure VARCHAR(24) NOT NULL,
+  expire_date DATE NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  local_date DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  kind VARCHAR(24) NOT NULL CHECK (kind IN ('CONSUMED','DISCARDED','OTHER')),
+  reason_code VARCHAR(24),
+  movement_id INTEGER REFERENCES stock_movements(id) ON DELETE SET NULL,
+  discard_id INTEGER,
+  canceled_at TIMESTAMPTZ
+);
+CREATE INDEX idx_money_exits_group_date ON money_exits(group_id, local_date DESC, id DESC);
+CREATE INDEX idx_money_exits_stock ON money_exits(stock_key, occurred_at, id);
+
+CREATE TABLE money_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  exit_id BIGINT NOT NULL REFERENCES money_exits(id) ON DELETE CASCADE,
+  supply_id BIGINT REFERENCES money_supplies(id) ON DELETE SET NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  amount NUMERIC(20,2),
+  category_group VARCHAR(24)
+);
+CREATE INDEX idx_money_allocations_exit ON money_allocations(exit_id);
+
+CREATE TABLE food_purchase_revisions (
+  id BIGSERIAL PRIMARY KEY,
+  purchase_id UUID NOT NULL REFERENCES food_purchases(id),
+  previous_version INTEGER NOT NULL,
+  previous_state JSONB NOT NULL,
+  changed_by UUID NOT NULL REFERENCES users(id),
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE conversation_participants (
@@ -777,39 +872,6 @@ CREATE TRIGGER trg_stock_products_set_status
     BEFORE INSERT OR UPDATE OF expire_date ON stock_products
     FOR EACH ROW
     EXECUTE FUNCTION trg_fn_stock_products_set_status();
-
-CREATE OR REPLACE FUNCTION trg_fn_stock_movements_apply()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_delta        INTEGER;
-    v_new_quantity INTEGER;
-BEGIN
-    v_delta := CASE NEW.movement_type
-        WHEN 'IN'  THEN NEW.quantity
-        WHEN 'OUT' THEN -NEW.quantity
-        ELSE NEW.quantity
-    END;
-
-    UPDATE stock_products
-       SET quantity = quantity + v_delta
-     WHERE id = NEW.stock_product_id
-     RETURNING quantity INTO v_new_quantity;
-
-    IF v_new_quantity < 0 THEN
-        RAISE EXCEPTION 'stock_movements: quantidade resultante negativa para stock_product_id %', NEW.stock_product_id;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_stock_movements_apply ON stock_movements;
-CREATE TRIGGER trg_stock_movements_apply
-    AFTER INSERT ON stock_movements
-    FOR EACH ROW
-    EXECUTE FUNCTION trg_fn_stock_movements_apply();
 
 -- Commercial inventory alerts are generated by PostgreSQL in the same
 -- transaction that changes a stock product. This keeps the alert correct

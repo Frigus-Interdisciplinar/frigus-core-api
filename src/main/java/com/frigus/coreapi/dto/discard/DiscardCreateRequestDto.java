@@ -23,4 +23,5 @@ public class DiscardCreateRequestDto {
 
     @Size(max = 2000, message = "O motivo deve ter no máximo 2000 caracteres")
     private String reason;
+    private String reasonCode;
 }

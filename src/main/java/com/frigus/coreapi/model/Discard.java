@@ -31,6 +31,9 @@ public class Discard {
     @Column(name = "reason", length = Integer.MAX_VALUE)
     private String reason;
 
+    @Column(name = "reason_code", length = 24)
+    private String reasonCode;
+
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "date", nullable = false)
@@ -39,4 +42,6 @@ public class Discard {
     @Column(name = "quantity", updatable = false)
     private Integer quantity;
 
+    @Column(name = "canceled_at")
+    private Instant canceledAt;
 }

@@ -4,6 +4,9 @@ import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.exception.ForbiddenException;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserGroupRepository;
+import com.frigus.coreapi.repository.GroupRepository;
+import com.frigus.coreapi.model.Group;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +25,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class GroupAccessServiceTest {
     @Mock UserGroupRepository memberships;
+    @Mock GroupRepository groups;
     @InjectMocks GroupAccessService service;
 
     @AfterEach
@@ -37,7 +41,9 @@ class GroupAccessServiceTest {
     @Test
     void administratorCanAccessGroupWithoutMembership() {
         User admin = authenticate(Role.ADMIN);
-        service.requireGroupAccess(UUID.randomUUID());
+        UUID groupId = UUID.randomUUID();
+        when(groups.findByIdAndDeletedAtIsNull(groupId)).thenReturn(Optional.of(Group.builder().id(groupId).build()));
+        service.requireGroupAccess(groupId);
         assertThat(service.requireCurrentUser()).isSameAs(admin);
         verifyNoInteractions(memberships);
     }
@@ -47,6 +53,8 @@ class GroupAccessServiceTest {
         User user = authenticate(Role.USER);
         UUID allowed = UUID.randomUUID();
         UUID forbidden = UUID.randomUUID();
+        when(groups.findByIdAndDeletedAtIsNull(allowed)).thenReturn(Optional.of(Group.builder().id(allowed).build()));
+        when(groups.findByIdAndDeletedAtIsNull(forbidden)).thenReturn(Optional.of(Group.builder().id(forbidden).build()));
         when(memberships.existsByUserIdAndGroupId(user.getId(), allowed)).thenReturn(true);
         service.requireGroupAccess(allowed);
         assertThatThrownBy(() -> service.requireGroupAccess(forbidden))

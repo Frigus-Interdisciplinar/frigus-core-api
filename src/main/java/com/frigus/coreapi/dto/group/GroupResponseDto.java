@@ -19,6 +19,7 @@ public class GroupResponseDto {
     private UUID defaultConversationId;
     private String name;
     private String bannerPicture;
+    private String timeZone;
     private int membersCount;
     private List<GroupMemberResponseDto> members;
     private Instant createdAt;

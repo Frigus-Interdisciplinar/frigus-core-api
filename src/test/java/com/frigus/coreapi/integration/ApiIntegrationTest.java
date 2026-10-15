@@ -69,7 +69,9 @@ class ApiIntegrationTest {
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
                     "/test/003_allow_free_transactions.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/004_expand_stock_product_contract.sql"),
-                    "/test/004_expand_stock_product_contract.sql");
+                    "/test/004_expand_stock_product_contract.sql")
+            .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/006_money_saving.sql"),
+                    "/test/006_money_saving.sql");
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry properties) {
@@ -375,8 +377,10 @@ class ApiIntegrationTest {
     void discardCannotReadOrChangeAnotherGroupsStock() throws Exception {
         int discardId = jdbc.queryForObject("INSERT INTO \"discard\"(stock_product_id,quantity) VALUES (?, 1) RETURNING id",
                 Integer.class, itemId);
-        mvc.perform(as(get("/discard"), outsider)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(as(get("/discard").param("groupId", groupId.toString()), outsider))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/discard").param("groupId", otherGroupId.toString()), outsider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(as(get("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(post("/discard"), outsider).contentType("application/json")
                 .content("{\"stockProductId\":" + itemId + ",\"quantity\":2}"))
@@ -489,6 +493,76 @@ class ApiIntegrationTest {
                         .contentType("application/json").content(movement("IN", 3))).andExpect(status().isForbidden());
         assertThat(balance()).isEqualTo(5);
         assertThat(count("stock_movements")).isZero();
+    }
+
+    @Test
+    void foodPurchaseIsIdempotentAndFifoRepricesConsumedHistory() throws Exception {
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
+        String payload = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","lines":[
+                  {"stockId":%d,"productId":%d,"expireDate":"2099-01-01","quantity":2,"unitPrice":4.00}]}
+                """.formatted(today, stockId, productId);
+        String path = "/groups/" + groupId + "/food-purchases";
+        JsonNode purchase = body(as(post(path), owner).header("Idempotency-Key", "milk-receipt")
+                .contentType("application/json").content(payload), 201);
+        JsonNode retry = body(as(post(path), owner).header("Idempotency-Key", "milk-receipt")
+                .contentType("application/json").content(payload), 201);
+        assertThat(retry.get("id")).isEqualTo(purchase.get("id"));
+        assertThat(balance()).isEqualTo(7);
+        assertThat(count("food_purchases")).isEqualTo(1);
+        mvc.perform(as(post(path), outsider).header("Idempotency-Key", "other")
+                .contentType("application/json").content(payload)).andExpect(status().isForbidden());
+
+        body(as(post("/stock-products/" + itemId + "/movements"), owner).contentType("application/json")
+                .content("{\"movementType\":\"OUT\",\"quantity\":6,\"reasonCode\":\"CONSUMED\"}"), 201);
+        body(as(post("/stock-products/" + itemId + "/movements"), owner).contentType("application/json")
+                .content("{\"movementType\":\"OUT\",\"quantity\":1,\"reasonCode\":\"CONSUMED\"}"), 201);
+        assertThat(balance()).isZero();
+        String query = "/groups/" + groupId + "/money-saving/summary?from=" + today + "&to=" + today.plusDays(1);
+        JsonNode before = body(as(get(query), owner), 200);
+        assertThat(before.get("spending").get("amount").asDouble()).isEqualTo(8.0);
+        assertThat(before.get("saving").get("amount").asDouble()).isEqualTo(4.0);
+        assertThat(before.get("saving").get("actions").asInt()).isEqualTo(2);
+        JsonNode events = body(as(get("/groups/" + groupId + "/money-saving/events?from=" + today +
+                "&to=" + today.plusDays(1) + "&kind=CONSUMED&page=0&size=1"), owner), 200);
+        assertThat(events.get("totalElements").asInt()).isEqualTo(2);
+        assertThat(events.get("content").size()).isEqualTo(1);
+
+        long lineId = purchase.get("lines").get(0).get("id").asLong();
+        String update = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","version":1,"lines":[
+                  {"id":%d,"quantity":2,"unitPrice":5.00}]}
+                """.formatted(today, lineId);
+        body(as(put(path + "/" + purchase.get("id").asString()), owner)
+                .contentType("application/json").content(update), 200);
+        JsonNode after = body(as(get(query), owner), 200);
+        assertThat(after.get("spending").get("amount").asDouble()).isEqualTo(10.0);
+        assertThat(after.get("saving").get("amount").asDouble()).isEqualTo(5.0);
+        assertThat(count("food_purchase_revisions")).isEqualTo(1);
+        mvc.perform(as(delete(path + "/" + purchase.get("id").asString()), owner)).andExpect(status().isConflict());
+    }
+
+    @Test
+    void expiredDiscardIsScopedAndCanBeReversed() throws Exception {
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
+        String purchasePayload = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","lines":[
+                  {"stockId":%d,"productId":%d,"expireDate":"%s","quantity":2,"unitPrice":3.00}]}
+                """.formatted(today.minusDays(2), stockId, productId, today.minusDays(1));
+        JsonNode purchase = body(as(post("/groups/" + groupId + "/food-purchases"), owner)
+                .header("Idempotency-Key", "expired-lot").contentType("application/json").content(purchasePayload), 201);
+        int expiredItemId = purchase.get("lines").get(0).get("stockProductId").asInt();
+        JsonNode discard = body(as(post("/discard"), owner).contentType("application/json")
+                .content("{\"stockProductId\":" + expiredItemId + ",\"quantity\":1,\"reasonCode\":\"EXPIRED\"}"), 201);
+        String query = "/groups/" + groupId + "/money-saving/summary?from=" + today + "&to=" + today.plusDays(1);
+        JsonNode summary = body(as(get(query), owner), 200);
+        assertThat(summary.get("loss").get("amount").asDouble()).isEqualTo(3.0);
+        assertThat(summary.get("loss").get("actions").asInt()).isEqualTo(1);
+        mvc.perform(as(get("/discard/" + discard.get("id").asInt()), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discard.get("id").asInt()), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discard.get("id").asInt()), owner)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT quantity FROM stock_products WHERE id=?", Integer.class, expiredItemId)).isEqualTo(2);
+        assertThat(body(as(get(query), owner), 200).get("loss").get("amount").asDouble()).isZero();
     }
 
     @Test

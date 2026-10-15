@@ -41,6 +41,9 @@ public class StockMovement {
     @JdbcType(PostgreSQLEnumJdbcType.class)
     private MovementType movementType;
 
+    @Column(name = "reason_code", length = 24)
+    private String reasonCode;
+
     @NotNull
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
