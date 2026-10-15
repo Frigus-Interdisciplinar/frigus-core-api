@@ -377,8 +377,10 @@ class ApiIntegrationTest {
     void discardCannotReadOrChangeAnotherGroupsStock() throws Exception {
         int discardId = jdbc.queryForObject("INSERT INTO \"discard\"(stock_product_id,quantity) VALUES (?, 1) RETURNING id",
                 Integer.class, itemId);
-        mvc.perform(as(get("/discard"), outsider)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(as(get("/discard").param("groupId", groupId.toString()), outsider))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/discard").param("groupId", otherGroupId.toString()), outsider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(as(get("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(post("/discard"), outsider).contentType("application/json")
                 .content("{\"stockProductId\":" + itemId + ",\"quantity\":2}"))
