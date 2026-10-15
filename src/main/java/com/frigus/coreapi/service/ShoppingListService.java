@@ -6,6 +6,8 @@ import com.frigus.coreapi.dto.shoppinglist.ShoppingListResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListUpdateRequestDto;
 import com.frigus.coreapi.enums.ListStatus;
 import com.frigus.coreapi.enums.ProductListStatus;
+import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.ShoppingListMapper;
 import com.frigus.coreapi.model.ShoppingList;
@@ -70,6 +72,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         return findByIdWithItems(list.getId());
     }
 
+    @Transactional(readOnly = true)
     public ShoppingListResponseDto findByIdWithItems(UUID id) {
         ShoppingList list = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException());
@@ -94,6 +97,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         return response;
     }
 
+    @Transactional(readOnly = true)
     public Page<ShoppingListResponseDto> findAll(Integer stockId, UUID groupId, ListStatus status, Pageable pageable) {
         Page<ShoppingList> page;
 
@@ -102,6 +106,10 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
                     .orElseThrow(() -> new NotFoundException());
             groupAccessService.requireGroupAccess(stock.getGroup().getId());
             
+            if (groupId != null && !groupId.equals(stock.getGroup().getId())) {
+                throw new BadRequestException(
+                        "Filtros inconsistentes", "O estoque não pertence ao grupo informado");
+            }
             if (status != null) {
                 page = repository.findByStockIdAndStatus(stockId, status, pageable);
             } else {
@@ -116,7 +124,11 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
                 page = repository.findByStock_GroupId(groupId, pageable);
             }
         } else {
-            page = repository.findAll(pageable);
+            var user = groupAccessService.requireCurrentUser();
+            page = user.getRole() == Role.ADMIN
+                    ? (status == null ? repository.findAll(pageable) : repository.findByStatus(status, pageable))
+                    : (status == null ? repository.findAccessible(user.getId(), pageable)
+                    : repository.findAccessibleByStatus(user.getId(), status, pageable));
         }
 
         return page.map(list -> {

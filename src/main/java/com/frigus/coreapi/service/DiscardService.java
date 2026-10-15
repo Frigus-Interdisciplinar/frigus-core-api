@@ -2,10 +2,10 @@ package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.discard.DiscardCreateRequestDto;
 import com.frigus.coreapi.dto.discard.DiscardResponseDto;
-import com.frigus.coreapi.exception.NotFoundException;
+import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.ConflictException;
-import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.DiscardMapper;
 import com.frigus.coreapi.model.Discard;
 import com.frigus.coreapi.model.StockProduct;
@@ -76,6 +76,11 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
             groupAccessService.requireGroupAccess(discard.getStockProduct().getStock().getGroup().getId());
     }
 
+    @Override
+    protected boolean requiresAuthorizedDelete() {
+        return true;
+    }
+
     @Transactional
     public DiscardResponseDto create(DiscardCreateRequestDto dto) {
         if (dto.getReasonCode() != null && !dto.getReasonCode().equals("EXPIRED") && !dto.getReasonCode().equals("OTHER"))
@@ -95,7 +100,6 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
         stockProduct.setQuantity(stockProduct.getQuantity() - dto.getQuantity());
         Discard discard = mapper.toEntity(dto);
         discard.setStockProduct(stockProduct);
-        
         discard.setDate(Instant.now());
 
         stockProductRepository.save(stockProduct);
@@ -129,5 +133,4 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
         repository.saveAndFlush(discard);
         if (ledger != null) ledger.cancelDiscard(id, item.getId());
     }
-
 }

@@ -1,15 +1,13 @@
 package com.frigus.coreapi.controller;
 
-import com.frigus.coreapi.dto.user.LoginRequestDto;
-import com.frigus.coreapi.dto.user.LoginResponseDto;
-import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
-import com.frigus.coreapi.dto.user.UserResponseDto;
+import com.frigus.coreapi.dto.user.*;
 import com.frigus.coreapi.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -20,6 +18,11 @@ import java.util.Map;
 public class AuthController {
     private final AuthService authService;
 
+    @GetMapping("/csrf")
+    public Map<String, String> csrf(CsrfToken token) {
+        return Map.of("token", token.getToken());
+    }
+
     @PostMapping("/register")
     public UserResponseDto register(@Valid @RequestBody UserRegisterRequestDto body) {
         return authService.register(body);
@@ -28,6 +31,17 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body, HttpServletResponse response) {
         LoginResponseDto loginResponseDto = authService.login(body);
+
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+
+        return loginResponseDto;
+    }
+
+    @PostMapping("/google")
+    public LoginResponseDto loginWithGoogle(
+            @Valid @RequestBody GoogleLoginRequestDto body,
+            HttpServletResponse response) {
+        LoginResponseDto loginResponseDto = authService.loginWithGoogle(body);
 
         setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
 
@@ -69,16 +83,18 @@ public class AuthController {
     private void setTokenCookies(HttpServletResponse response, String accessToken, String refreshToken) {
         ResponseCookie accessTokenCookie = ResponseCookie.from("accessToken", accessToken)
                 .httpOnly(true)
+                .secure(true)
                 .path("/")
                 .maxAge(15 * 60) // 15 minutos
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
+                .secure(true)
                 .path("/")
                 .maxAge(30 * 24 * 60 * 60) // 30 dias
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
@@ -88,16 +104,18 @@ public class AuthController {
     private void clearTokenCookies(HttpServletResponse response) {
         ResponseCookie accessTokenCookie = ResponseCookie.from("accessToken", "")
                 .httpOnly(true)
+                .secure(true)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", "")
                 .httpOnly(true)
+                .secure(true)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());

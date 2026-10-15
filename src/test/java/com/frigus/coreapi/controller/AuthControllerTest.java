@@ -39,7 +39,7 @@ class AuthControllerTest {
         assertThat(controller.login(login, response)).isSameAs(tokens);
         ArgumentCaptor<String> cookies = ArgumentCaptor.forClass(String.class);
         verify(response, times(2)).addHeader(eq(HttpHeaders.SET_COOKIE), cookies.capture());
-        assertThat(cookies.getAllValues()).allSatisfy(cookie -> assertThat(cookie).contains("HttpOnly", "SameSite=Lax"));
+        assertThat(cookies.getAllValues()).allSatisfy(cookie -> assertThat(cookie).contains("HttpOnly", "Secure", "SameSite=None"));
     }
 
     @Test
@@ -52,6 +52,7 @@ class AuthControllerTest {
         verify(authService).logout("body-token");
         ArgumentCaptor<String> cookies = ArgumentCaptor.forClass(String.class);
         verify(response, times(4)).addHeader(eq(HttpHeaders.SET_COOKIE), cookies.capture());
-        assertThat(cookies.getAllValues().subList(2, 4)).allSatisfy(cookie -> assertThat(cookie).contains("Max-Age=0"));
+        assertThat(cookies.getAllValues().subList(2, 4)).allSatisfy(cookie ->
+                assertThat(cookie).contains("Max-Age=0", "Secure", "SameSite=None"));
     }
 }

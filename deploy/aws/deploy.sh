@@ -21,7 +21,7 @@ require_command() {
   }
 }
 
-for command_name in aws docker kubectl git; do
+for command_name in aws docker kubectl git envsubst; do
   require_command "$command_name"
 done
 
@@ -29,6 +29,21 @@ if [[ ! -f "$ROOT_DIR/.env" ]]; then
   echo "Erro: crie o arquivo .env local antes do deploy." >&2
   exit 1
 fi
+
+: "${API_HOST:?Defina API_HOST para o domínio público da API}"
+: "${ALB_CERTIFICATE_ARN:?Defina ALB_CERTIFICATE_ARN para o certificado ACM}"
+: "${FRONTEND_ORIGINS:?Defina FRONTEND_ORIGINS com as origens HTTPS permitidas}"
+: "${TRUSTED_PROXY_CIDRS:?Defina TRUSTED_PROXY_CIDRS com as faixas dos proxies confiáveis}"
+
+secret_arguments=()
+for secret_key in DATABASE_URL DATABASE_USERNAME DATABASE_PASSWORD REDIS_URL JWT_SECRET JWT_EXPIRATION FRIGUS_AI_BASE_URL FRIGUS_AI_API_KEY AD_CLICK_REPORT_SECRET; do
+  secret_value="$(awk -F= -v key="$secret_key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$ROOT_DIR/.env")"
+  if [[ -z "$secret_value" ]]; then
+    echo "Erro: variável obrigatória ausente no .env: $secret_key" >&2
+    exit 1
+  fi
+  secret_arguments+=("--from-literal=${secret_key}=${secret_value}")
+done
 
 echo "Validando credenciais AWS..."
 AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
@@ -52,19 +67,10 @@ docker push "$IMAGE_URI"
 
 echo "Aplicando namespace e configuração..."
 kubectl apply -f "$ROOT_DIR/deploy/k8s/namespace.yaml"
-kubectl -n "$KUBE_NAMESPACE" apply -f "$ROOT_DIR/deploy/k8s/configmap.yaml"
+envsubst '${API_HOST} ${FRONTEND_ORIGINS} ${TRUSTED_PROXY_CIDRS}' < "$ROOT_DIR/deploy/k8s/configmap.yaml" \
+  | kubectl -n "$KUBE_NAMESPACE" apply -f -
 
 echo "Atualizando Secret do Kubernetes a partir do .env..."
-secret_arguments=()
-for secret_key in DATABASE_URL DATABASE_USERNAME DATABASE_PASSWORD REDIS_URL JWT_SECRET JWT_EXPIRATION; do
-  secret_value="$(awk -F= -v key="$secret_key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$ROOT_DIR/.env")"
-  if [[ -z "$secret_value" ]]; then
-    echo "Erro: variável obrigatória ausente no .env: $secret_key" >&2
-    exit 1
-  fi
-  secret_arguments+=("--from-literal=${secret_key}=${secret_value}")
-done
-
 kubectl -n "$KUBE_NAMESPACE" create secret generic core-api-secrets \
   "${secret_arguments[@]}" \
   --dry-run=client \
@@ -74,6 +80,8 @@ kubectl -n "$KUBE_NAMESPACE" create secret generic core-api-secrets \
 echo "Aplicando Deployment e Load Balancer..."
 kubectl -n "$KUBE_NAMESPACE" apply -f "$ROOT_DIR/deploy/k8s/deployment.yaml"
 kubectl -n "$KUBE_NAMESPACE" apply -f "$ROOT_DIR/deploy/k8s/service.yaml"
+envsubst '${API_HOST} ${ALB_CERTIFICATE_ARN}' < "$ROOT_DIR/deploy/k8s/ingress.yaml" \
+  | kubectl -n "$KUBE_NAMESPACE" apply -f -
 kubectl -n "$KUBE_NAMESPACE" set image deployment/core-api \
   "core-api=${IMAGE_URI}"
 

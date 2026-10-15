@@ -39,11 +39,9 @@ public class Discard {
     @Column(name = "date", nullable = false)
     private Instant date;
 
-    @NotNull
-    @Column(name = "quantity", nullable = false, updatable = false)
+    @Column(name = "quantity", updatable = false)
     private Integer quantity;
 
     @Column(name = "canceled_at")
     private Instant canceledAt;
-
 }

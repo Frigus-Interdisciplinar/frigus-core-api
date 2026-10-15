@@ -175,7 +175,8 @@ CREATE TABLE users (
   account_type account_type_enum NOT NULL,
   role user_role_enum NOT NULL DEFAULT 'USER',
   email VARCHAR NOT NULL,
-  hash_password VARCHAR NOT NULL,
+  hash_password VARCHAR,
+  google_id VARCHAR UNIQUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
@@ -335,9 +336,9 @@ CREATE TABLE conversations (
 CREATE TABLE "discard" (
   id SERIAL PRIMARY KEY,
   stock_product_id INTEGER NOT NULL,
+  quantity INTEGER,
   reason TEXT,
   reason_code VARCHAR(24),
-  quantity INTEGER,
   canceled_at TIMESTAMPTZ,
   date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

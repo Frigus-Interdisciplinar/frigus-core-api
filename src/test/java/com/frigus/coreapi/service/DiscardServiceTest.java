@@ -8,6 +8,8 @@ import com.frigus.coreapi.model.Discard;
 import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.StockProduct;
+import com.frigus.coreapi.model.Stock;
+import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.repository.DiscardRepository;
 import com.frigus.coreapi.repository.StockProductRepository;
 import org.junit.jupiter.api.Test;
@@ -39,6 +41,9 @@ class DiscardServiceTest {
     @Mock
     private StockProductRepository stockProductRepository;
 
+    @Mock
+    private GroupAccessService groupAccessService;
+
     @InjectMocks
     private DiscardService discardService;
 
@@ -49,7 +54,8 @@ class DiscardServiceTest {
                 .quantity(2)
                 .reason("Produto vencido")
                 .build();
-        StockProduct stockProduct = StockProduct.builder().id(12).quantity(10).build();
+        StockProduct stockProduct = StockProduct.builder().id(12).quantity(10)
+                .stock(Stock.builder().group(Group.builder().id(UUID.randomUUID()).build()).build()).build();
         Discard discard = Discard.builder().reason(request.getReason()).build();
         Discard savedDiscard = Discard.builder()
                 .id(3)

@@ -45,9 +45,11 @@ public class User {
     @Column(name = "email", nullable = false, length = Integer.MAX_VALUE)
     private String email;
 
-    @NotNull
-    @Column(name = "hash_password", nullable = false, length = Integer.MAX_VALUE)
+    @Column(name = "hash_password", length = Integer.MAX_VALUE)
     private String hashPassword;
+
+    @Column(name = "google_id", length = 255, unique = true)
+    private String googleId;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
