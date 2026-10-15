@@ -33,6 +33,9 @@ public class User {
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
+    @Column(name = "profile_picture_url", length = 2048)
+    private String profilePictureUrl;
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
