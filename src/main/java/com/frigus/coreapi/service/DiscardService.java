@@ -18,9 +18,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class DiscardService extends BaseService<Discard, Integer, DiscardCreateRequestDto, DiscardResponseDto, DiscardMapper, DiscardRepository> {
+
+    private static final Set<String> SORTABLE_FIELDS = Set.of("id", "date", "quantity", "reason", "reasonCode");
 
     private final StockProductRepository stockProductRepository;
     private final GroupAccessService groupAccessService;
@@ -52,6 +56,17 @@ public class DiscardService extends BaseService<Discard, Integer, DiscardCreateR
                 ? repository.findActive(pageable)
                 : repository.findAccessible(user.getId(), pageable);
         return page.map(mapper::toDto);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public Page<DiscardResponseDto> findByGroupId(UUID groupId, Pageable pageable) {
+        groupAccessService.requireGroupAccess(groupId);
+        pageable.getSort().forEach(order -> {
+            if (!SORTABLE_FIELDS.contains(order.getProperty())) {
+                throw new BadRequestException("Ordenação inválida", "Use id, date, quantity, reason ou reasonCode");
+            }
+        });
+        return repository.findActiveByGroupId(groupId, pageable).map(mapper::toDto);
     }
 
     @Override

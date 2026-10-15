@@ -36,6 +36,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,6 +58,8 @@ class MoneySavingHttpIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+        registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
         registry.add("spring.data.redis.url", () -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
     }
 
@@ -115,6 +118,56 @@ class MoneySavingHttpIntegrationTest {
         mvc.perform(as(get(prefix + "/money-saving/summary" + dates), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(get(prefix + "/food-purchases/" + purchase.get("id").asString()), outsider))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void discardListRequiresGroupAndRejectsInvalidSortBeforeQuerying() throws Exception {
+        int itemId = jdbc.queryForObject("""
+                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
+                VALUES (?, ?, 5, '2099-01-01', 'DAIRY') RETURNING id
+                """, Integer.class, productId, stockId);
+        int first = discard(itemId, "first");
+        int second = discard(itemId, "second");
+        int canceled = discard(itemId, "canceled");
+        jdbc.update("UPDATE \"discard\" SET date='2026-01-01 12:00:00' WHERE id IN (?,?,?)", first, second, canceled);
+        mvc.perform(as(delete("/discard/" + canceled), owner)).andExpect(status().isOk());
+
+        String path = "/discard";
+        JsonNode firstPage = body(as(get(path).param("groupId", groupId.toString())
+                .param("page", "0").param("size", "1"), owner), 200);
+        assertThat(firstPage.get("totalElements").asInt()).isEqualTo(2);
+        assertThat(firstPage.get("content").get(0).get("id").asInt()).isEqualTo(second);
+        JsonNode nextPage = body(as(get(path).param("groupId", groupId.toString())
+                .param("page", "1").param("size", "1"), owner), 200);
+        assertThat(nextPage.get("content").get(0).get("id").asInt()).isEqualTo(first);
+        for (String field : new String[] {"id", "date", "quantity", "reason", "reasonCode"}) {
+            for (String direction : new String[] {"asc", "desc"}) {
+                assertThat(body(as(get(path).param("groupId", groupId.toString())
+                        .param("sort", field + "," + direction), owner), 200)
+                        .get("totalElements").asInt()).isEqualTo(2);
+            }
+        }
+
+        UUID emptyGroup = jdbc.queryForObject("INSERT INTO groups(owner_id,name) VALUES (?, 'Empty') RETURNING id",
+                UUID.class, outsider.getId());
+        jdbc.update("INSERT INTO user_groups(user_id,group_id) VALUES (?,?)", outsider.getId(), emptyGroup);
+        assertThat(body(as(get(path).param("groupId", emptyGroup.toString()), outsider), 200)
+                .get("content").isEmpty()).isTrue();
+
+        mvc.perform(as(get(path), owner)).andExpect(status().isBadRequest());
+        mvc.perform(as(get(path).param("groupId", groupId.toString()), outsider)).andExpect(status().isForbidden());
+        for (String sort : new String[] {"[]", "[\"string\"]", "unknown,desc", "date,sideways"}) {
+            mvc.perform(as(get(path).param("groupId", groupId.toString()).param("sort", sort), owner))
+                    .andExpect(status().isBadRequest());
+        }
+        jdbc.update("UPDATE groups SET deleted_at=now() WHERE id=?", emptyGroup);
+        mvc.perform(as(get(path).param("groupId", emptyGroup.toString()), outsider)).andExpect(status().isNotFound());
+    }
+
+    private int discard(int itemId, String reason) throws Exception {
+        return body(as(post("/discard"), owner).contentType("application/json")
+                .content("{\"stockProductId\":" + itemId + ",\"quantity\":1,\"reason\":\"" + reason + "\"}"), 201)
+                .get("id").asInt();
     }
 
     private User user(String email) {

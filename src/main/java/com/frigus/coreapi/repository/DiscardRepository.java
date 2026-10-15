@@ -8,6 +8,10 @@ import org.springframework.data.repository.query.Param;
 import java.util.UUID;
 
 public interface DiscardRepository extends BaseRepository<Discard, Integer>{
+    @Query("select d from Discard d where d.canceledAt is null and d.stockProduct.stock.group.id = :groupId " +
+            "and d.stockProduct.stock.group.deletedAt is null")
+    Page<Discard> findActiveByGroupId(@Param("groupId") UUID groupId, Pageable pageable);
+
     @Query("select d from Discard d where d.canceledAt is null and d.stockProduct.stock.group.deletedAt is null")
     Page<Discard> findActive(Pageable pageable);
 
