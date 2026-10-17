@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 import java.util.UUID;
+import java.util.List;
 
 @Getter
 @Setter
@@ -20,4 +21,6 @@ public class MessageSendDto {
     private String content;
 
     private Integer relatedShoppingListProductId;
+
+    private List<MessageAttachmentInputDto> attachments;
 }

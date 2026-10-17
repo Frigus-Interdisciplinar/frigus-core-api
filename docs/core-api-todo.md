@@ -29,8 +29,9 @@ Não recriar estas capacidades como se estivessem ausentes:
 - **Consumo:** movimentações já aceitam `OUT`, quantidade e observação; descartes
   aceitam quantidade e motivo. Não há lacuna conhecida para o consumo parcial
   descrito nas telas atuais.
-- **Chat:** não há busca de mensagens nem reações. Mensagens do tipo imagem podem
-  circular como conteúdo, mas não há contrato de upload/armazenamento de anexos.
+- **Chat:** busca textual por conversa, reações emoji e metadados de anexos estão
+  implementados. Upload e leitura de anexos usam links assinados do bucket privado
+  `chat-attachments`, provisionado pelo BFF quando o primeiro anexo é enviado.
 - **Grupo ativo persistente:** o contexto de estoque pode ser resolvido por
   requisição ou `groupId`, mas não existe preferência persistida de grupo/estoque
   ativo por usuário. Só implementar se o web precisar reabrir a última seleção.

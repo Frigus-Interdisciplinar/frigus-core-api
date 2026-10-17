@@ -6,6 +6,7 @@ import com.frigus.coreapi.dto.conversation.CreateGroupConversationRequestDto;
 import com.frigus.coreapi.dto.conversation.CreatePrivateConversationRequestDto;
 import com.frigus.coreapi.dto.message.MessageResponseDto;
 import com.frigus.coreapi.dto.message.MessageSendDto;
+import com.frigus.coreapi.dto.message.MessageReactionDto;
 import com.frigus.coreapi.service.ConversationService;
 import com.frigus.coreapi.service.MessageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -74,8 +76,9 @@ public class ConversationController {
     @Operation(summary = "Obter histórico paginado de mensagens de uma conversa")
     public Page<MessageResponseDto> getMessages(
             @PathVariable UUID id,
-            Pageable pageable) {
-        return messageService.getMessagesHistory(id, pageable);
+            Pageable pageable,
+            @RequestParam(required = false) String q) {
+        return messageService.getMessagesHistory(id, pageable, q);
     }
 
     @PostMapping("/{id}/messages")
@@ -95,5 +98,20 @@ public class ConversationController {
             @PathVariable UUID id,
             @PathVariable Integer messageId) {
         messageService.markAsRead(id, messageId);
+    }
+
+    @GetMapping("/{id}/messages/{messageId}/reactions")
+    public List<MessageReactionDto> listReactions(@PathVariable UUID id, @PathVariable Integer messageId) {
+        return messageService.listReactions(id, messageId);
+    }
+
+    @PutMapping("/{id}/messages/{messageId}/reactions")
+    public List<MessageReactionDto> addReaction(@PathVariable UUID id, @PathVariable Integer messageId, @RequestBody Map<String, String> body) {
+        return messageService.addReaction(id, messageId, body.get("emoji"));
+    }
+
+    @DeleteMapping("/{id}/messages/{messageId}/reactions")
+    public List<MessageReactionDto> removeReaction(@PathVariable UUID id, @PathVariable Integer messageId, @RequestParam String emoji) {
+        return messageService.removeReaction(id, messageId, emoji);
     }
 }
