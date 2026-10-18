@@ -15,6 +15,8 @@ import com.frigus.coreapi.repository.ConversationParticipantRepository;
 import com.frigus.coreapi.repository.ConversationRepository;
 import com.frigus.coreapi.repository.MessageReadRepository;
 import com.frigus.coreapi.repository.MessageRepository;
+import com.frigus.coreapi.repository.MessageAttachmentRepository;
+import com.frigus.coreapi.repository.MessageReactionRepository;
 import com.frigus.coreapi.repository.ShoppingListProductRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +116,12 @@ class MessageServiceTest {
 
     @Mock
     private MessageReadRepository messageReadRepository;
+
+    @Mock
+    private MessageAttachmentRepository messageAttachmentRepository;
+
+    @Mock
+    private MessageReactionRepository messageReactionRepository;
 
     @Mock
     private ShoppingListProductRepository shoppingListProductRepository;

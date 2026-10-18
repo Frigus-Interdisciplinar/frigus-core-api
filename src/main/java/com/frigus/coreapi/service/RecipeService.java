@@ -28,7 +28,7 @@ public class RecipeService {
  public RecipeResponseDto get(Integer id){return toDto(requireRecipe(id));}
  public Page<RecipeResponseDto> favorites(Pageable pageable){return favorites.findByUserIdAndRecipeActiveTrue(access.requireCurrentUser().getId(),pageable).map(f -> toDto(f.getRecipe()));}
  @Transactional public RecipeResponseDto create(RecipeRequestDto dto){
-  var recipe=Recipe.builder().name(dto.getName().trim()).description(dto.getDescription()).instructions(dto.getInstructions()).domesticOnly(dto.getDomesticOnly()).active(dto.getActive()).createdAt(Instant.now()).build();
+  var recipe=Recipe.builder().name(dto.getName().trim()).description(dto.getDescription()).instructions(dto.getInstructions()).domesticOnly(dto.getDomesticOnly() != null ? dto.getDomesticOnly() : true).active(dto.getActive() != null ? dto.getActive() : true).createdAt(Instant.now()).build();
   return toDto(recipes.save(recipe));
  }
  @Transactional public RecipeResponseDto update(Integer id,RecipeRequestDto dto){

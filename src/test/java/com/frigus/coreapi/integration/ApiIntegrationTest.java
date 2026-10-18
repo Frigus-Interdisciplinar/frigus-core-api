@@ -8,7 +8,6 @@ import com.frigus.coreapi.service.RefreshTokenService;
 import com.frigus.coreapi.service.SubscriptionBillingJobService;
 import com.frigus.coreapi.service.TransactionQueueProducer;
 import com.frigus.coreapi.service.TransactionWorkerService;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -137,21 +136,21 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void authenticatesRealBearerAndCookieTokensAndUsesPersistedRole() throws Exception {
+    void authenticatesRealBearerTokensAndUsesPersistedRole() throws Exception {
         String token = tokens.generateAccessToken(owner);
         mvc.perform(get("/profile").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(owner.getId().toString()))
                 .andExpect(jsonPath("$.hashPassword").doesNotExist());
-        mvc.perform(get("/profile").cookie(new Cookie("accessToken", token)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(owner.getEmail()));
+        mvc.perform(get("/profile"))
+                .andExpect(status().isForbidden());
         jdbc.update("UPDATE users SET role='ADMIN' WHERE id=?", owner.getId());
         mvc.perform(get("/user").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
     }
 
     @Test
-    void rejectsInvalidTokenEvenWhenCookieContainsValidToken() throws Exception {
+    void rejectsInvalidBearerEvenWhenRequestIncludesCookieCredentials() throws Exception {
         mvc.perform(get("/profile").header("Authorization", "Bearer invalid")
-                        .cookie(new Cookie("accessToken", tokens.generateAccessToken(owner))))
+                        .header("Cookie", "accessToken=" + tokens.generateAccessToken(owner)))
                 .andExpect(status().isForbidden());
     }
 
@@ -210,7 +209,7 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void registersHashesPasswordAndLogsInWithHttpOnlyCookies() throws Exception {
+    void registersHashesPasswordAndReturnsTokensWithoutBrowserCookies() throws Exception {
         String registration = """
                 {"name":"New User","email":"new@example.test","birthDate":"01/01/1990","rawPassword":"Strong123!"}
                 """;
@@ -224,9 +223,10 @@ class ApiIntegrationTest {
         when(refreshTokens.createRefreshToken(registered.getId(),registered.getTokenVersion())).thenReturn("test-refresh");
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString()).andReturn().getResponse();
-        assertThat(login.getHeaders("Set-Cookie")).hasSize(2).allSatisfy(cookie ->
-                assertThat(cookie).contains("HttpOnly", "Path=/", "SameSite=Lax"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(jsonPath("$.refreshToken").isString()).andReturn().getResponse();
+        assertThat(login.getHeaders("Set-Cookie")).isEmpty();
         mvc.perform(post("/auth/register").contentType("application/json").content(registration)).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email='new@example.test'", Integer.class)).isEqualTo(1);
     }
@@ -260,7 +260,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Shelf"));
         assertThat(jdbc.queryForObject("SELECT name FROM stocks WHERE id=?", String.class, id)).isEqualTo("Shelf");
         mvc.perform(as(delete("/stocks/" + id), owner)).andExpect(status().isOk());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM stocks WHERE id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stocks WHERE id=? AND deleted_at IS NULL", Integer.class, id)).isZero();
     }
 
     @Test
@@ -286,7 +286,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
         mvc.perform(as(delete("/stock-products/" + id), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(delete("/stock-products/" + id), owner)).andExpect(status().isOk());
-        assertThat(count("stock_products")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_products WHERE deleted_at IS NULL", Integer.class)).isEqualTo(1);
     }
 
     @ParameterizedTest
