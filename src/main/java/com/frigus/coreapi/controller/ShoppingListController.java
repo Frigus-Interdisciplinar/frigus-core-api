@@ -94,6 +94,12 @@ public class ShoppingListController {
         return shoppingListService.generateFromLowStock(stockId);
     }
 
+    @PostMapping("/auto-add-near-expiration")
+    @Operation(summary = "Adiciona automaticamente produtos próximos da validade para a lista de compras aberta")
+    public List<ShoppingListProductResponseDto> autoAddNearExpiration(@RequestParam(required = false) Integer stockId) {
+        return shoppingListService.autoAddProductsNearExpiration(stockId);
+    }
+
     // --- ITEM ENDPOINTS ---
 
     @PostMapping("/{listId}/items")

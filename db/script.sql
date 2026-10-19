@@ -306,6 +306,7 @@ CREATE TABLE shopping_lists (
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   stock_id INTEGER NOT NULL,
   status list_status_enum NOT NULL,
+  added_by VARCHAR(50) NOT NULL DEFAULT 'Adicionado por você',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_shopping_lists_stock_id_stocks FOREIGN KEY (stock_id) REFERENCES stocks (id) ON DELETE CASCADE
@@ -351,6 +352,8 @@ CREATE TABLE shopping_list_products (
   product_id INTEGER NOT NULL,
   status product_list_status_enum,
   quantity INTEGER NOT NULL DEFAULT 1,
+  notes VARCHAR(255),
+  added_by VARCHAR(50) NOT NULL DEFAULT 'Adicionado por você',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_shopping_list_products_list_product UNIQUE (list_id, product_id),

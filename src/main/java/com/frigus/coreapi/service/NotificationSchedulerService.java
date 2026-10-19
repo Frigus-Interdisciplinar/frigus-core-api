@@ -22,6 +22,7 @@ public class NotificationSchedulerService {
     private final StockProductRepository stockProductRepository;
     private final ShoppingListProductRepository shoppingListProductRepository;
     private final NotificationService notificationService;
+    private final ShoppingListService shoppingListService;
 
     @Value("${notifications.expiration.warning-days:3}")
     private int expirationWarningDays;
@@ -44,6 +45,8 @@ public class NotificationSchedulerService {
                     String.valueOf(stockProduct.getId()),
                     "near-expiration:" + stockProduct.getId() + ":" + stockProduct.getExpireDate());
         }
+
+        shoppingListService.autoAddProductsNearExpiration(null);
     }
 
     @Scheduled(cron = "${notifications.shopping-list-reminder.cron:0 0 10 * * *}")

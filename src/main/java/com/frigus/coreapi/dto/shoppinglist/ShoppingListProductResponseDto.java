@@ -23,6 +23,8 @@ public class ShoppingListProductResponseDto {
     private Integer quantity;
     private Double estimatedTotal;
     private ProductListStatus status;
+    private String notes;
+    private String addedBy;
     private Instant createdAt;
     private Instant updatedAt;
 }

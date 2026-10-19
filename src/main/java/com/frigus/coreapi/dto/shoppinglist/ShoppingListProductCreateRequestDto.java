@@ -18,4 +18,8 @@ public class ShoppingListProductCreateRequestDto {
     @NotNull(message = "Quantity is required")
     @Positive(message = "Quantity must be greater than zero")
     private Integer quantity;
+
+    private String notes;
+
+    private String addedBy;
 }

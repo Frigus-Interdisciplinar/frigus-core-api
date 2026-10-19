@@ -129,6 +129,10 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
             item.setStatus(dto.getStatus());
         }
 
+        if (dto.getNotes() != null) {
+            item.setNotes(dto.getNotes());
+        }
+
         item = repository.save(item);
         shoppingListService.checkAndAutoCloseList(listId);
         

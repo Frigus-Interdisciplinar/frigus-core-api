@@ -46,6 +46,12 @@ public class ShoppingList {
     private ListStatus status;
 
     @NotNull
+    @ColumnDefault("'Adicionado por você'")
+    @Column(name = "added_by", nullable = false)
+    @Builder.Default
+    private String addedBy = "Adicionado por você";
+
+    @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -68,6 +74,9 @@ public class ShoppingList {
         }
         if (status == null) {
             status = ListStatus.OPEN;
+        }
+        if (addedBy == null || addedBy.isBlank()) {
+            addedBy = "Adicionado por você";
         }
     }
 

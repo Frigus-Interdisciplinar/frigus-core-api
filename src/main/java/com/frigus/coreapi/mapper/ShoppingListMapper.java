@@ -16,6 +16,9 @@ public class ShoppingListMapper implements BaseMapper<ShoppingList, ShoppingList
 
         ShoppingList entity = new ShoppingList();
         entity.setDate(dto.getDate());
+        if (dto.getAddedBy() != null && !dto.getAddedBy().isBlank()) {
+            entity.setAddedBy(dto.getAddedBy());
+        }
         return entity;
     }
 
@@ -31,6 +34,7 @@ public class ShoppingListMapper implements BaseMapper<ShoppingList, ShoppingList
                 .stockName(entity.getStock() != null ? entity.getStock().getName() : null)
                 .date(entity.getDate())
                 .status(entity.getStatus())
+                .addedBy(entity.getAddedBy())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

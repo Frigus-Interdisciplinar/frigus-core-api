@@ -20,6 +20,8 @@ public class ShoppingListCreateRequestDto {
 
     private LocalDate date; // Optional planned date
 
+    private String addedBy;
+
     @Valid
     private List<ShoppingListProductCreateRequestDto> initialItems;
 }

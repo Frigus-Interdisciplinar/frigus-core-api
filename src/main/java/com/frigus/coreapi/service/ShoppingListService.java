@@ -2,6 +2,7 @@ package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductCreateRequestDto;
+import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListUpdateRequestDto;
 import com.frigus.coreapi.enums.ListStatus;
@@ -10,7 +11,9 @@ import com.frigus.coreapi.enums.Role;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.ShoppingListMapper;
+import com.frigus.coreapi.mapper.ShoppingListProductMapper;
 import com.frigus.coreapi.model.ShoppingList;
+import com.frigus.coreapi.model.ShoppingListProduct;
 import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.StockProduct;
 import com.frigus.coreapi.repository.ShoppingListProductRepository;
@@ -23,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +40,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
     private final ShoppingListProductService shoppingListProductService;
     private final ShoppingListProductRepository shoppingListProductRepository;
     private final StockProductRepository stockProductRepository;
+    private final ShoppingListProductMapper shoppingListProductMapper;
 
     public ShoppingListService(ShoppingListRepository repository,
                                ShoppingListMapper mapper,
@@ -43,13 +48,15 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
                                GroupAccessService groupAccessService,
                                @Lazy ShoppingListProductService shoppingListProductService,
                                ShoppingListProductRepository shoppingListProductRepository,
-                               StockProductRepository stockProductRepository) {
+                               StockProductRepository stockProductRepository,
+                               ShoppingListProductMapper shoppingListProductMapper) {
         super(repository, mapper);
         this.stockRepository = stockRepository;
         this.groupAccessService = groupAccessService;
         this.shoppingListProductService = shoppingListProductService;
         this.shoppingListProductRepository = shoppingListProductRepository;
         this.stockProductRepository = stockProductRepository;
+        this.shoppingListProductMapper = shoppingListProductMapper;
     }
 
     @Transactional
@@ -62,6 +69,11 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         ShoppingList list = mapper.toEntity(dto);
         list.setStock(stock);
         list.setStatus(ListStatus.OPEN);
+        if (dto.getAddedBy() != null && !dto.getAddedBy().isBlank()) {
+            list.setAddedBy(dto.getAddedBy());
+        } else {
+            list.setAddedBy("Adicionado por você");
+        }
 
         list = repository.save(list);
 
@@ -253,5 +265,63 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         createDto.setInitialItems(initialItems);
 
         return create(createDto);
+    }
+
+    @Transactional
+    public List<ShoppingListProductResponseDto> autoAddProductsNearExpiration(Integer targetStockId) {
+        LocalDate today = LocalDate.now();
+        LocalDate warningLimit = today.plusDays(3);
+
+        List<StockProduct> expiringProducts;
+        if (targetStockId != null) {
+            expiringProducts = stockProductRepository.findByStockId(targetStockId).stream()
+                    .filter(sp -> sp.getExpireDate() != null
+                            && !sp.getExpireDate().isAfter(warningLimit)
+                            && sp.getQuantity() != null && sp.getQuantity() > 0)
+                    .collect(Collectors.toList());
+        } else {
+            expiringProducts = stockProductRepository.findByExpireDateBetween(today, warningLimit).stream()
+                    .filter(sp -> sp.getQuantity() != null && sp.getQuantity() > 0)
+                    .collect(Collectors.toList());
+        }
+
+        List<ShoppingListProductResponseDto> addedItems = new ArrayList<>();
+
+        for (StockProduct sp : expiringProducts) {
+            Stock stock = sp.getStock();
+            if (stock == null) continue;
+
+            // Encontra uma lista aberta para o estoque ou cria uma nova
+            ShoppingList openList = repository.findByStockIdAndStatus(stock.getId(), ListStatus.OPEN, Pageable.unpaged())
+                    .getContent().stream()
+                    .findFirst()
+                    .orElseGet(() -> {
+                        ShoppingList newList = ShoppingList.builder()
+                                .stock(stock)
+                                .date(today)
+                                .status(ListStatus.OPEN)
+                                .addedBy("Automático")
+                                .build();
+                        return repository.save(newList);
+                    });
+
+            // Evita duplicar se o produto já estiver na lista
+            boolean alreadyInList = shoppingListProductRepository.existsByListIdAndProductId(openList.getId(), sp.getProduct().getId());
+            if (!alreadyInList) {
+                ShoppingListProduct item = ShoppingListProduct.builder()
+                        .list(openList)
+                        .product(sp.getProduct())
+                        .quantity(1)
+                        .status(ProductListStatus.PENDING)
+                        .notes("Automático: produto próximo do vencimento (" + sp.getExpireDate() + ")")
+                        .addedBy("Automático")
+                        .build();
+
+                ShoppingListProduct saved = shoppingListProductRepository.save(item);
+                addedItems.add(shoppingListProductMapper.toDto(saved));
+            }
+        }
+
+        return addedItems;
     }
 }

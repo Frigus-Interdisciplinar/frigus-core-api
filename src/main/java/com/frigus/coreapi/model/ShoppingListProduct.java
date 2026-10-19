@@ -47,6 +47,15 @@ public class ShoppingListProduct {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
+    @Column(name = "notes", length = 255)
+    private String notes;
+
+    @NotNull
+    @ColumnDefault("'Adicionado por você'")
+    @Column(name = "added_by", nullable = false)
+    @Builder.Default
+    private String addedBy = "Adicionado por você";
+
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)
@@ -70,6 +79,9 @@ public class ShoppingListProduct {
         }
         if (status == null) {
             status = ProductListStatus.PENDING;
+        }
+        if (addedBy == null || addedBy.isBlank()) {
+            addedBy = "Adicionado por você";
         }
     }
 

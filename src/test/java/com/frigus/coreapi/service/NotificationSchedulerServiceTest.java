@@ -37,13 +37,15 @@ class NotificationSchedulerServiceTest {
     private ShoppingListProductRepository shoppingListProductRepository;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private ShoppingListService shoppingListService;
 
     private NotificationSchedulerService scheduler;
 
     @BeforeEach
     void setUp() {
         scheduler = new NotificationSchedulerService(
-                stockProductRepository, shoppingListProductRepository, notificationService);
+                stockProductRepository, shoppingListProductRepository, notificationService, shoppingListService);
         ReflectionTestUtils.setField(scheduler, "expirationWarningDays", 3);
         ReflectionTestUtils.setField(scheduler, "shoppingListReminderDelayDays", 3);
     }
@@ -72,6 +74,7 @@ class NotificationSchedulerServiceTest {
                 "Leite vence em " + expiresOn + ".",
                 "42",
                 "near-expiration:42:" + expiresOn);
+        verify(shoppingListService).autoAddProductsNearExpiration(null);
     }
 
     @Test

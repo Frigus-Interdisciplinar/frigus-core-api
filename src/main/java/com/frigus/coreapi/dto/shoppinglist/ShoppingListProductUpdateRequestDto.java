@@ -15,4 +15,5 @@ public class ShoppingListProductUpdateRequestDto {
     @Positive(message = "Quantity must be greater than zero")
     private Integer quantity;
     private ProductListStatus status;
+    private String notes;
 }
