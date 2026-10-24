@@ -57,7 +57,7 @@ public class PlanLimitsResolverService {
 
     public PlanLimitsDto getLimitsForPlan(PlanCode planCode) {
         // default for frigus free plan
-        int maxGroupsCreated = 0;
+        int maxGroupsCreated = 1;
         int maxGroupMembers = 3;
         int maxStocks = 1;
         int maxProductsPerStock = 20;
@@ -70,7 +70,7 @@ public class PlanLimitsResolverService {
 
         switch (planCode.name()) {
             case "FREE":
-                maxGroupsCreated = 0;
+                maxGroupsCreated = 1;
                 break;
             case "PLUS":
                 maxGroupsCreated = 1;
