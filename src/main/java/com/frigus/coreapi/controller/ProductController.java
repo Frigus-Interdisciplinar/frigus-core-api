@@ -17,8 +17,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/products")
@@ -34,14 +37,14 @@ public class ProductController extends BaseController<
     }
 
     @GetMapping
-    @Override
-    public Page<ProductResponseDto> findAll(Pageable pageable) {
-        return super.findAll(pageable);
+    public Page<ProductResponseDto> findAll(
+            @RequestParam(required = false) UUID groupId,
+            Pageable pageable) {
+        return service.findAllForGroup(groupId, pageable);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN')")
     public ProductResponseDto create(@Valid @RequestBody ProductCreateRequestDto dto) {
         return service.create(dto);
     }
