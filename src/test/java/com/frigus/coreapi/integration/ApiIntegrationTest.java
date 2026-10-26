@@ -114,8 +114,8 @@ class ApiIntegrationTest {
                 VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER') RETURNING id
                 """, Integer.class);
         itemId = jdbc.queryForObject("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,minimal_quantity,expire_date,category)
-                VALUES (?, ?, 5, 1, '2099-01-01', 'DAIRY') RETURNING id
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,minimal_quantity,expire_date,category)
+                VALUES (?, ?, 5, 5, 1, '2099-01-01', 'DAIRY') RETURNING id
                 """, Integer.class, productId, stockId);
     }
 
@@ -424,8 +424,8 @@ class ApiIntegrationTest {
     @Test
     void databaseEnforcesBatchUniquenessAndProductForeignKey() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
-                VALUES (?, ?, 1, '2099-01-01', 'DAIRY')
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,expire_date,category)
+                VALUES (?, ?, 1, 1, '2099-01-01', 'DAIRY')
                 """, productId, stockId)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("DELETE FROM products WHERE id=?", productId))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);

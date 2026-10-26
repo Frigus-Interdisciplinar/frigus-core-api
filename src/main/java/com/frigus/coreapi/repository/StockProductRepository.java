@@ -2,8 +2,7 @@ package com.frigus.coreapi.repository;
 
 import com.frigus.coreapi.model.StockProduct;
 import jakarta.persistence.LockModeType;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,9 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface StockProductRepository extends BaseRepository<StockProduct, Integer> {
-    @Query("select sp from StockProduct sp join fetch sp.product where sp.stock.id=:stockId and sp.deletedAt is null and sp.stock.deletedAt is null")
-    Page<StockProduct> findByStockId(@Param("stockId") Integer stockId, Pageable pageable);
+public interface StockProductRepository extends BaseRepository<StockProduct, Integer>, JpaSpecificationExecutor<StockProduct> {
 
     @Query("select sp from StockProduct sp where sp.stock.id=:stockId and sp.deletedAt is null and sp.stock.deletedAt is null")
     List<StockProduct> findByStockId(@Param("stockId") Integer stockId);

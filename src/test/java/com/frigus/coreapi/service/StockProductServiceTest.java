@@ -30,6 +30,7 @@ class StockProductServiceTest {
     @Mock private StockRepository stockRepository;
     @Mock private ProductRepository productRepository;
     @Mock private GroupAccessService groupAccessService;
+    @Mock private StockMovementService stockMovementService;
 
     @Test
     void shouldCreateStockProductWithCategoryAndDerivedStatus() {
@@ -52,7 +53,8 @@ class StockProductServiceTest {
                 stockRepository,
                 productRepository,
                 groupAccessService,
-                new StockProductStatusResolver());
+                new StockProductStatusResolver(),
+                stockMovementService);
 
         when(stockRepository.findById(3)).thenReturn(Optional.of(stock));
         when(productRepository.findById(7)).thenReturn(Optional.of(product));
@@ -71,5 +73,6 @@ class StockProductServiceTest {
         assertThat(response.getCategory()).isEqualTo(Category.DAIRY);
         assertThat(response.getProductStatus()).isEqualTo(ProductStatus.NEAR_EXPIRATION);
         assertThat(response.getQuantity()).isEqualTo(4);
+        assertThat(response.getInitialQuantity()).isEqualTo(4);
     }
 }

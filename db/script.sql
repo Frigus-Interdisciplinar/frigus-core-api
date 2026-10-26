@@ -40,7 +40,12 @@ CREATE TYPE category_enum AS ENUM(
   'GRAIN',
   'BEVERAGE',
   'CLEANING',
-  'PERSONAL_HYGIENE'
+  'PERSONAL_HYGIENE',
+  'FISH',
+  'FROZEN',
+  'SWEETS',
+  'CANNED',
+  'SEASONING'
 );
 
 CREATE TYPE storage_place_enum AS ENUM('FRIDGE', 'FREEZER', 'PANTRY', 'CABINET', 'SHELF');
@@ -170,6 +175,7 @@ CREATE TABLE notifications (
   reference_id VARCHAR(120),
   deduplication_key VARCHAR(220),
   read_at TIMESTAMP,
+  deleted_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_notifications_recipient_user_id_users FOREIGN KEY (recipient_user_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_notifications_group_id_groups FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
@@ -180,6 +186,7 @@ CREATE TABLE stock_products (
   product_id INTEGER NOT NULL,
   stock_id INTEGER NOT NULL,
   quantity INTEGER NOT NULL,
+  initial_quantity INTEGER NOT NULL,
   minimal_quantity INTEGER,
   expire_date DATE NOT NULL,
   product_status product_status_enum,
@@ -188,6 +195,7 @@ CREATE TABLE stock_products (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_stock_products_product_stock_expire UNIQUE (product_id, stock_id, expire_date),
   CONSTRAINT chk_stock_products_minimal_quantity CHECK (minimal_quantity IS NULL OR minimal_quantity >= 0),
+  CONSTRAINT chk_stock_products_initial_quantity CHECK (initial_quantity >= 0),
   CONSTRAINT fk_stock_products_product_id_products FOREIGN KEY (product_id) REFERENCES products (id),
   CONSTRAINT fk_stock_products_stock_id_stocks FOREIGN KEY (stock_id) REFERENCES stocks (id) ON DELETE CASCADE
 );

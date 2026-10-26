@@ -10,14 +10,19 @@ import com.frigus.coreapi.mapper.StockProductMapper;
 import com.frigus.coreapi.model.Product;
 import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.StockProduct;
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.StoragePlace;
 import com.frigus.coreapi.repository.ProductRepository;
 import com.frigus.coreapi.repository.StockProductRepository;
 import com.frigus.coreapi.repository.StockRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
+
+import java.util.ArrayList;
 
 @Service
 public class StockProductService extends BaseService<StockProduct, Integer, StockProductCreateRequestDto, StockProductResponseDto, StockProductMapper, StockProductRepository> {
@@ -25,6 +30,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
     private final ProductRepository productRepository;
     private final GroupAccessService groupAccessService;
     private final StockProductStatusResolver statusResolver;
+    private final StockMovementService stockMovementService;
 
     public StockProductService(
             StockProductRepository repository,
@@ -32,12 +38,14 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             StockRepository stockRepository,
             ProductRepository productRepository,
             GroupAccessService groupAccessService,
-            StockProductStatusResolver statusResolver) {
+            StockProductStatusResolver statusResolver,
+            StockMovementService stockMovementService) {
         super(repository, mapper);
         this.stockRepository = stockRepository;
         this.productRepository = productRepository;
         this.groupAccessService = groupAccessService;
         this.statusResolver = statusResolver;
+        this.stockMovementService = stockMovementService;
     }
 
     @Override
@@ -49,9 +57,34 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
 
     @Transactional(readOnly = true)
     public Page<StockProductResponseDto> findByStockId(Integer stockId, Pageable pageable) {
+        return findByStockId(stockId, null, null, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<StockProductResponseDto> findByStockId(Integer stockId, Category category,
+                                                       StoragePlace storagePlace, String query, Pageable pageable) {
         Stock stock = getRequiredStock(stockId);
         groupAccessService.requireGroupAccess(stock.getGroup().getId());
-        return repository.findByStockId(stockId, pageable).map(this::mapToDto);
+        String normalizedQuery = query == null || query.isBlank() ? null : query.trim();
+        Specification<StockProduct> specification = (root, criteria, builder) -> {
+            var product = root.join("product");
+            var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(builder.equal(root.get("stock").get("id"), stockId));
+            predicates.add(builder.isNull(root.get("deletedAt")));
+            predicates.add(builder.isNull(root.get("stock").get("deletedAt")));
+            if (category != null) predicates.add(builder.equal(root.get("category"), category));
+            if (storagePlace != null) predicates.add(builder.equal(product.get("storagePlace"), storagePlace));
+            if (normalizedQuery != null) {
+                String pattern = "%" + normalizedQuery.toLowerCase(java.util.Locale.ROOT) + "%";
+                predicates.add(builder.or(
+                        builder.like(builder.lower(product.get("name")), pattern),
+                        builder.like(builder.lower(builder.coalesce(product.get("brand"), "")), pattern),
+                        builder.like(builder.lower(builder.coalesce(root.get("batch"), "")), pattern)));
+            }
+            return builder.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        var result = repository.findAll(specification, pageable);
+        return result.map(this::mapToDto);
     }
 
     @Override
@@ -89,6 +122,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
         StockProduct stockProduct = mapper.toEntity(dto);
         stockProduct.setProduct(product);
         stockProduct.setStock(stock);
+        stockProduct.setInitialQuantity(dto.getQuantity());
         stockProduct.setCategory(product.getCategory());
         stockProduct.setProductStatus(statusResolver.resolve(dto.getExpireDate()));
         return mapToDto(repository.save(stockProduct));
@@ -96,14 +130,46 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
 
     @Transactional
     public StockProductResponseDto update(Integer id, StockProductUpdateRequestDto dto) {
-        StockProduct stockProduct = getRequiredEntity(id);
+        StockProduct stockProduct = repository.findByIdForUpdate(id).orElseThrow(NotFoundException::new);
         authorizeRead(stockProduct);
         groupAccessService.requireGroupWriteAccess(stockProduct.getStock().getGroup().getId());
-        stockProduct.setMinimalQuantity(dto.getMinimalQuantity());
-        stockProduct.setExpireDate(dto.getExpireDate());
+        if (dto.isEmpty()) {
+            throw new BadRequestException("Atualização vazia", "Informe ao menos um campo para atualizar");
+        }
+
+        if (dto.getName() != null || dto.getCategory() != null || dto.getStoragePlace() != null) {
+            Product product = stockProduct.getProduct();
+            java.util.UUID groupId = stockProduct.getStock().getGroup().getId();
+            if (product.getOwnerGroup() == null || !product.getOwnerGroup().getId().equals(groupId)) {
+                product = Product.builder()
+                        .name(product.getName()).brand(product.getBrand()).imageUrl(product.getImageUrl())
+                        .category(product.getCategory()).storagePlace(product.getStoragePlace())
+                        .unitPrice(product.getUnitPrice()).unitOfMeasure(product.getUnitOfMeasure())
+                        .createdAt(java.time.Instant.now()).ownerGroup(stockProduct.getStock().getGroup())
+                        .build();
+            }
+            if (dto.getName() != null) product.setName(dto.getName().trim());
+            if (dto.getCategory() != null) product.setCategory(dto.getCategory());
+            if (dto.getStoragePlace() != null) product.setStoragePlace(dto.getStoragePlace());
+            stockProduct.setProduct(productRepository.save(product));
+            stockProduct.setCategory(product.getCategory());
+        }
+
+        if (dto.getMinimalQuantity() != null) stockProduct.setMinimalQuantity(dto.getMinimalQuantity());
+        if (dto.getInitialQuantity() != null) stockProduct.setInitialQuantity(dto.getInitialQuantity());
+        if (dto.getExpireDate() != null) stockProduct.setExpireDate(dto.getExpireDate());
         if (dto.getBatch() != null) stockProduct.setBatch(dto.getBatch().trim());
-        stockProduct.setProductStatus(statusResolver.resolve(dto.getExpireDate()));
-        return mapToDto(repository.save(stockProduct));
+        stockProduct.setProductStatus(statusResolver.resolve(stockProduct.getExpireDate()));
+        repository.save(stockProduct);
+
+        if (dto.getQuantity() != null && !dto.getQuantity().equals(stockProduct.getQuantity())) {
+            stockMovementService.create(id, com.frigus.coreapi.dto.stockmovement.StockMovementCreateRequestDto.builder()
+                    .movementType(com.frigus.coreapi.enums.MovementType.ADJUSTMENT)
+                    .quantity(dto.getQuantity())
+                    .observation("Ajuste de saldo na edição do alimento")
+                    .build());
+        }
+        return mapToDto(repository.findById(id).orElseThrow(NotFoundException::new));
     }
 
     private Stock getRequiredStock(Integer stockId) {

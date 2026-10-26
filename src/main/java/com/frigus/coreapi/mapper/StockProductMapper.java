@@ -17,6 +17,7 @@ public class StockProductMapper implements BaseMapper<StockProduct, StockProduct
                 .productId(stockProduct.getProduct().getId()).product(productMapper.toDto(stockProduct.getProduct())).batch(stockProduct.getBatch())
                 .stockId(stockProduct.getStock().getId())
                 .quantity(stockProduct.getQuantity())
+                .initialQuantity(stockProduct.getInitialQuantity())
                 .minimalQuantity(stockProduct.getMinimalQuantity())
                 .expireDate(stockProduct.getExpireDate())
                 .productStatus(stockProduct.getProductStatus())

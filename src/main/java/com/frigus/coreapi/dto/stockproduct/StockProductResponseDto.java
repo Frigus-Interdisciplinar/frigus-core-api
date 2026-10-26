@@ -20,6 +20,7 @@ public class StockProductResponseDto {
     private Integer productId;
     private Integer stockId;
     private Integer quantity;
+    private Integer initialQuantity;
     private Integer minimalQuantity;
     private LocalDate expireDate;
     private ProductStatus productStatus;
