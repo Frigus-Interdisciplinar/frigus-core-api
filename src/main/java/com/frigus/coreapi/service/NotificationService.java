@@ -39,20 +39,21 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserGroupRepository userGroupRepository;
     private final NotificationMapper notificationMapper;
+    private final PreferencesService preferences;
     private final JdbcTemplate jdbcTemplate;
     @Value("${AD_CLICK_REPORT_SECRET:}") private String reportSecret;
 
     @Transactional(readOnly = true)
     public Page<NotificationResponseDto> listMyNotifications(Pageable pageable) {
         User currentUser = requireCurrentUser();
-        return notificationRepository.findByRecipientIdOrderByCreatedAtDesc(currentUser.getId(), pageable)
+        return notificationRepository.findByRecipientIdAndDeletedAtIsNullOrderByCreatedAtDesc(currentUser.getId(), pageable)
                 .map(notificationMapper::toDto);
     }
 
     @Transactional
     public NotificationResponseDto markAsRead(UUID notificationId) {
         User currentUser = requireCurrentUser();
-        Notification notification = notificationRepository.findByIdAndRecipientId(notificationId, currentUser.getId())
+        Notification notification = notificationRepository.findByIdAndRecipientIdAndDeletedAtIsNull(notificationId, currentUser.getId())
                 .orElseThrow(() -> new NotFoundException("Notificação não encontrada", "A notificação não existe para este usuário"));
         if (notification.getReadAt() == null) {
             notification.setReadAt(Instant.now());
@@ -77,19 +78,8 @@ public class NotificationService {
         for (UserGroup membership : userGroupRepository.findByGroupId(group.getId())) {
             String key = deduplicationKeyPrefix == null ? null
                     : deduplicationKeyPrefix + ":" + membership.getUser().getId();
-            if (key != null && notificationRepository.existsByDeduplicationKey(key)) {
-                continue;
-            }
-            notificationRepository.save(Notification.builder()
-                    .recipient(membership.getUser())
-                    .group(group)
-                    .type(type)
-                    .title(title)
-                    .body(body)
-                    .referenceId(referenceId)
-                    .deduplicationKey(key)
-                    .createdAt(Instant.now())
-                    .build());
+            if(!preferences.allows(membership.getUser().getId(),type)) continue;
+            notificationRepository.insertIfAbsent(membership.getUser().getId(),group.getId(),type.name(),title,body,referenceId,key);
         }
     }
 
@@ -140,7 +130,7 @@ public class NotificationService {
     }
 
     private boolean isDomesticOrCommercialGroup(Group group) {
-        if (group == null || group.getOwner() == null) {
+        if (group == null || group.getOwner() == null || group.getDeletedAt()!=null) {
             return false;
         }
         AccountType accountType = group.getOwner().getAccountType();
@@ -154,4 +144,16 @@ public class NotificationService {
         }
         return user;
     }
+
+    @Transactional(readOnly=true)
+    public Page<NotificationResponseDto> listMyNotifications(Pageable pageable,boolean unreadOnly){
+        UUID id=requireCurrentUser().getId();
+        return (unreadOnly
+                ? notificationRepository.findByRecipientIdAndReadAtIsNullAndDeletedAtIsNullOrderByCreatedAtDesc(id, pageable)
+                : notificationRepository.findByRecipientIdAndDeletedAtIsNullOrderByCreatedAtDesc(id, pageable))
+                .map(notificationMapper::toDto);
+    }
+    @Transactional(readOnly=true) public long unreadCount(){return notificationRepository.countByRecipientIdAndReadAtIsNullAndDeletedAtIsNull(requireCurrentUser().getId());}
+    @Transactional public void markAllRead(){notificationRepository.markAllRead(requireCurrentUser().getId(),Instant.now());}
+    @Transactional public void clearAll(){notificationRepository.softDeleteAll(requireCurrentUser().getId(),Instant.now());}
 }

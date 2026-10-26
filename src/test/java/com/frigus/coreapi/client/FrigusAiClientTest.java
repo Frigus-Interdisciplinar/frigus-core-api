@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
@@ -42,8 +43,8 @@ class FrigusAiClientTest {
     }
 
     @Test
-    void createsChatThenSendsMessageAndStockIdUsingProviderSession() {
-        server.expect(requestTo("http://ai.example.test/chats")).andExpect(method(HttpMethod.POST))
+    void createsChatThenSendsMessageUsingProviderSession() {
+        server.expect(requestTo("http://ai.example.test/v1/chats")).andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"chat_id\":\"new-session\",\"stock_id\":7}", MediaType.APPLICATION_JSON));
         expectMessage("new-session").andRespond(withSuccess(
                 "{\"chat_id\":\"new-session\",\"content\":\"Suggestion\"}", MediaType.APPLICATION_JSON));
@@ -83,8 +84,29 @@ class FrigusAiClientTest {
     }
 
     @Test
+    void sendsLargeReceiptProductListsInBatchesOfTenAndCombinesResults() {
+        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", "test-api-key"))
+                .andExpect(jsonPath("$.products", hasSize(10)))
+                .andRespond(withSuccess(invoiceItem(1), MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", "test-api-key"))
+                .andExpect(jsonPath("$.products", hasSize(1)))
+                .andRespond(withSuccess(invoiceItem(11), MediaType.APPLICATION_JSON));
+
+        var products = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(line -> new FrigusAiClient.InvoiceProductInput(line, "Product " + line, 1.0,
+                        "UN", 1.0, 1.0, "Product " + line))
+                .toList();
+
+        var result = client.extractInvoice(products);
+
+        assertThat(result.items()).extracting(FrigusAiClient.InvoiceItem::lineNumber).containsExactly(1, 11);
+    }
+
+    @Test
     void failedChatCreationProducesServiceUnavailableErrorWithoutSendingMessage() {
-        server.expect(requestTo("http://ai.example.test/chats")).andExpect(method(HttpMethod.POST))
+        server.expect(requestTo("http://ai.example.test/v1/chats")).andExpect(method(HttpMethod.POST))
                 .andExpect(header("X-API-Key", "test-api-key"))
                 .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
         assertUnavailable(null);
@@ -98,10 +120,18 @@ class FrigusAiClientTest {
     }
 
     private org.springframework.test.web.client.ResponseActions expectMessage(String session) {
-        return server.expect(requestTo("http://ai.example.test/chats/" + session + "/messages"))
+        return server.expect(requestTo("http://ai.example.test/v1/chats/" + session + "/messages"))
                 .andExpect(header("X-API-Key", "test-api-key"))
                 .andExpect(method(HttpMethod.POST)).andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().json("{\"content\":\"Dinner?\",\"stock_id\":7}"));
+                .andExpect(content().json("{\"content\":\"Dinner?\"}"));
+    }
+
+    private String invoiceItem(int lineNumber) {
+        return "{\"items\":[{\"lineNumber\":" + lineNumber + ",\"description\":\"Product " + lineNumber
+                + "\",\"productName\":\"Product " + lineNumber
+                + "\",\"quantity\":1,\"unit\":\"UN\",\"unitOfMeasure\":\"UNIT\",\"unitPrice\":1,"
+                + "\"totalPrice\":1,\"category\":\"GRAIN\",\"storagePlace\":\"PANTRY\",\"confidence\":1,"
+                + "\"evidence\":\"Product " + lineNumber + "\"}],\"warnings\":[]}";
     }
 
     private FrigusAiPromptPayload payload(String session) {

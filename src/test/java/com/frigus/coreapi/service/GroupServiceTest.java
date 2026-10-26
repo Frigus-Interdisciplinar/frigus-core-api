@@ -103,6 +103,8 @@ class GroupServiceTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock private GroupAccessService groupAccessService;
+
     @InjectMocks
     private GroupService groupService;
 
@@ -145,6 +147,12 @@ class GroupServiceTest {
 
         var auth = new UsernamePasswordAuthenticationToken(currentUser, null, List.of());
         SecurityContextHolder.getContext().setAuthentication(auth);
+        lenient().when(userRepository.findByIdForUpdate(any())).thenAnswer(invocation -> {
+            UUID id=invocation.getArgument(0);
+            return id.equals(currentUser.getId()) ? Optional.of(currentUser) : userRepository.findById(id);
+        });
+        lenient().when(groupRepository.findByIdForUpdate(any())).thenAnswer(invocation -> groupRepository.findByIdAndDeletedAtIsNull(invocation.getArgument(0)));
+
     }
 
     @AfterEach

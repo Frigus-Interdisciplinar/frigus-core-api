@@ -31,6 +31,11 @@ public class UserGroup {
     @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable=false,length=16)
+    private com.frigus.coreapi.enums.MemberRole memberRole=com.frigus.coreapi.enums.MemberRole.EDITOR;
+
     @NotNull
     @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at", nullable = false)

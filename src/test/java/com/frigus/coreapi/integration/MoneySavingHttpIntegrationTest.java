@@ -123,8 +123,8 @@ class MoneySavingHttpIntegrationTest {
     @Test
     void discardListRequiresGroupAndRejectsInvalidSortBeforeQuerying() throws Exception {
         int itemId = jdbc.queryForObject("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
-                VALUES (?, ?, 5, '2099-01-01', 'DAIRY') RETURNING id
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,expire_date,category)
+                VALUES (?, ?, 5, 5, '2099-01-01', 'DAIRY') RETURNING id
                 """, Integer.class, productId, stockId);
         int first = discard(itemId, "first");
         int second = discard(itemId, "second");

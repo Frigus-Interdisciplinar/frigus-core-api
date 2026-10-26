@@ -4,6 +4,8 @@ import com.frigus.coreapi.dto.shoppinglist.ShoppingListCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListUpdateRequestDto;
+import com.frigus.coreapi.dto.product.ProductResponseDto;
+import com.frigus.coreapi.dto.shopping.ShoppingSuggestionDto;
 import com.frigus.coreapi.enums.ListStatus;
 import com.frigus.coreapi.enums.ProductListStatus;
 import com.frigus.coreapi.enums.Role;
@@ -80,18 +82,18 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
 
         ShoppingListResponseDto response = mapper.toDto(list);
-        
+
         response.setItems(shoppingListProductService.findByListId(id));
-        
+
         response.setTotalItems(shoppingListProductRepository.countByListId(id));
         response.setPurchasedItems(shoppingListProductRepository.countByListIdAndStatus(id, ProductListStatus.PURCHASED));
         response.setPendingItems(shoppingListProductRepository.countByListIdAndStatus(id, ProductListStatus.PENDING));
-        
+
         Double estimatedTotal = response.getItems().stream()
                 .filter(item -> item.getEstimatedTotal() != null)
                 .mapToDouble(item -> item.getEstimatedTotal())
                 .sum();
-                
+
         response.setEstimatedTotal(estimatedTotal);
 
         return response;
@@ -105,7 +107,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
             Stock stock = stockRepository.findById(stockId)
                     .orElseThrow(() -> new NotFoundException());
             groupAccessService.requireGroupAccess(stock.getGroup().getId());
-            
+
             if (groupId != null && !groupId.equals(stock.getGroup().getId())) {
                 throw new BadRequestException(
                         "Filtros inconsistentes", "O estoque não pertence ao grupo informado");
@@ -117,7 +119,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
             }
         } else if (groupId != null) {
             groupAccessService.requireGroupAccess(groupId);
-            
+
             if (status != null) {
                 page = repository.findByStock_GroupIdAndStatus(groupId, status, pageable);
             } else {
@@ -139,6 +141,31 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         });
     }
 
+    @Transactional(readOnly = true)
+    public List<ShoppingSuggestionDto> suggestions(Integer stockId) {
+        Stock stock = stockRepository.findById(stockId)
+                .orElseThrow(() -> new NotFoundException());
+        groupAccessService.requireGroupAccess(stock.getGroup().getId());
+
+        return stockProductRepository.findActiveByStock(stockId).stream()
+                .filter(item -> item.getMinimalQuantity() != null && item.getQuantity() < item.getMinimalQuantity())
+                .map(item -> {
+                    var source = item.getProduct();
+                    ProductResponseDto product = ProductResponseDto.builder()
+                            .id(source.getId())
+                            .name(source.getName())
+                            .category(source.getCategory())
+                            .unitOfMeasure(source.getUnitOfMeasure())
+                            .build();
+                    return new ShoppingSuggestionDto(
+                            product,
+                            item.getQuantity(),
+                            item.getMinimalQuantity() - item.getQuantity(),
+                            item.getQuantity() == 0 ? "OUT_OF_STOCK" : "LOW_STOCK");
+                })
+                .toList();
+    }
+
     @Transactional
     public ShoppingListResponseDto update(UUID id, ShoppingListUpdateRequestDto dto) {
         ShoppingList list = repository.findById(id)
@@ -149,7 +176,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         if (dto.getDate() != null) {
             list.setDate(dto.getDate());
         }
-        
+
         if (dto.getStatus() != null) {
             list.setStatus(dto.getStatus());
         }
@@ -174,7 +201,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         ShoppingList list = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException());
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
-        
+
         list.setStatus(ListStatus.COMPLETED);
         repository.save(list);
         return findByIdWithItems(id);
@@ -185,7 +212,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         ShoppingList list = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException());
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
-        
+
         list.setStatus(ListStatus.CANCELED);
         repository.save(list);
         return findByIdWithItems(id);
@@ -196,7 +223,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         ShoppingList list = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException());
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
-        
+
         list.setStatus(ListStatus.OPEN);
         repository.save(list);
         return findByIdWithItems(id);
@@ -215,7 +242,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
         }
 
         // If no items are PENDING (all are PURCHASED or REMOVED), close the list
-        boolean hasPending = shoppingListProductRepository.existsByListIdAndStatusNotIn(id, 
+        boolean hasPending = shoppingListProductRepository.existsByListIdAndStatusNotIn(id,
                 List.of(ProductListStatus.PURCHASED, ProductListStatus.REMOVED));
 
         if (!hasPending) {
@@ -241,7 +268,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
 
         ShoppingListCreateRequestDto createDto = new ShoppingListCreateRequestDto();
         createDto.setStockId(stockId);
-        
+
         List<ShoppingListProductCreateRequestDto> initialItems = new ArrayList<>();
         for (StockProduct sp : lowStockProducts) {
             int neededQuantity = sp.getMinimalQuantity() - sp.getQuantity();

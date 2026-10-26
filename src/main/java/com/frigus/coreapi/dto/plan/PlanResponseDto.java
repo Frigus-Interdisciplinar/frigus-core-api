@@ -24,4 +24,5 @@ public class PlanResponseDto {
     private PlanLimitsDto limits;
     private Instant createdAt;
     private Instant updatedAt;
+    private java.util.List<PlanBenefitDto> benefits;
 }

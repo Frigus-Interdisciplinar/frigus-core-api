@@ -41,4 +41,10 @@ public class NotificationController {
                                @RequestHeader("X-Ad-Clicks-Signature") String signature) {
         notificationService.notifyAdClickMilestones(dto.getTotalClicks(), timestamp, signature);
     }
+
+    @GetMapping("/unread") public Page<NotificationResponseDto> unread(Pageable pageable){return notificationService.listMyNotifications(pageable,true);}
+    @GetMapping("/unread-count") public java.util.Map<String,Long> unreadCount(){return java.util.Map.of("count",notificationService.unreadCount());}
+    @PatchMapping("/read-all") @ResponseStatus(HttpStatus.NO_CONTENT) public void markAllRead(){notificationService.markAllRead();}
+    @DeleteMapping @ResponseStatus(HttpStatus.NO_CONTENT) @Operation(summary = "Limpar todas as notificações do usuário autenticado")
+    public void clearAll() { notificationService.clearAll(); }
 }

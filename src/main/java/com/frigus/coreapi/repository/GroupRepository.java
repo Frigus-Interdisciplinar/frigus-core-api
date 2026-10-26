@@ -26,4 +26,8 @@ public interface GroupRepository extends BaseRepository<Group, UUID> {
 
     @Query("SELECT ug.group FROM UserGroup ug WHERE ug.user.id = :userId AND ug.group.deletedAt IS NULL")
     Page<Group> findGroupsByUserId(@Param("userId") UUID userId, Pageable pageable);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select g from Group g where g.id=:id and g.deletedAt is null")
+    Optional<Group> findByIdForUpdate(@Param("id") UUID id);
+    List<Group> findByDeletedAtIsNull();
 }

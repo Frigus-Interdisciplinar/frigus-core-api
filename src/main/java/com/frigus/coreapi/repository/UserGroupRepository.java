@@ -11,7 +11,8 @@ import java.util.UUID;
 
 @Repository
 public interface UserGroupRepository extends BaseRepository<UserGroup, Integer> {
-    boolean existsByUserIdAndGroupId(UUID userId, UUID groupId);
+    @Query("select count(ug)>0 from UserGroup ug where ug.user.id=:userId and ug.group.id=:groupId and ug.group.deletedAt is null")
+    boolean existsByUserIdAndGroupId(@Param("userId") UUID userId,@Param("groupId") UUID groupId);
 
     Optional<UserGroup> findByUserIdAndGroupId(UUID userId, UUID groupId);
 

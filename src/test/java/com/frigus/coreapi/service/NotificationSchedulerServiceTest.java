@@ -43,14 +43,15 @@ class NotificationSchedulerServiceTest {
     @BeforeEach
     void setUp() {
         scheduler = new NotificationSchedulerService(
-                stockProductRepository, shoppingListProductRepository, notificationService);
+                stockProductRepository, shoppingListProductRepository, notificationService,
+                org.mockito.Mockito.mock(com.frigus.coreapi.repository.GroupRepository.class),org.mockito.Mockito.mock(StockSummaryService.class));
         ReflectionTestUtils.setField(scheduler, "expirationWarningDays", 3);
         ReflectionTestUtils.setField(scheduler, "shoppingListReminderDelayDays", 3);
     }
 
     @Test
     void expirationJobNotifiesForProductsInWarningWindow() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
         LocalDate expiresOn = today.plusDays(2);
         UUID groupId = UUID.randomUUID();
         Group group = domesticGroup(groupId);
@@ -76,7 +77,7 @@ class NotificationSchedulerServiceTest {
 
     @Test
     void shoppingListJobQueriesOldPendingItemsAndNotifiesGroup() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
         UUID groupId = UUID.randomUUID();
         UUID listId = UUID.randomUUID();
         Group group = domesticGroup(groupId);
@@ -93,7 +94,7 @@ class NotificationSchedulerServiceTest {
         verify(shoppingListProductRepository).findListsWithPendingProductsCreatedOnOrBefore(
                 ProductListStatus.PENDING,
                 ListStatus.OPEN,
-                today.minusDays(2).atStartOfDay(ZoneOffset.UTC).toInstant());
+                today.minusDays(2).atStartOfDay(java.time.ZoneId.of("America/Sao_Paulo")).toInstant());
         verify(notificationService).notifyDomesticOrCommercialGroup(
                 group,
                 NotificationType.SHOPPING_LIST_REMINDER,

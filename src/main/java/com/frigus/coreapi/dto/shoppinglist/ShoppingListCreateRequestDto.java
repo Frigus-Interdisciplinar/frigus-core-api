@@ -18,6 +18,8 @@ public class ShoppingListCreateRequestDto {
     @NotNull(message = "Stock ID is required")
     private Integer stockId;
 
+    private String name;
+
     private LocalDate date; // Optional planned date
 
     @Valid

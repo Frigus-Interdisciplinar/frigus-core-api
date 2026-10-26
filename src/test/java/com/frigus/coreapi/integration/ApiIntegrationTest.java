@@ -1,6 +1,7 @@
 package com.frigus.coreapi.integration;
 
 import com.frigus.coreapi.model.User;
+import jakarta.servlet.http.Cookie;
 import com.frigus.coreapi.client.FrigusAiClient;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.security.TokenProvider;
@@ -8,7 +9,6 @@ import com.frigus.coreapi.service.RefreshTokenService;
 import com.frigus.coreapi.service.SubscriptionBillingJobService;
 import com.frigus.coreapi.service.TransactionQueueProducer;
 import com.frigus.coreapi.service.TransactionWorkerService;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "server.address=127.0.0.1",
-        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
         "spring.jpa.open-in-view=false", "app.swagger.open-on-startup=false",
         "aws.s3.enabled=false", "logging.level.root=WARN"
@@ -64,8 +64,6 @@ class ApiIntegrationTest {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("frigus_test")
             .withStartupTimeout(java.time.Duration.ofMinutes(3))
-            .withCopyFileToContainer(MountableFile.forHostPath("db/script.sql"),
-                    "/docker-entrypoint-initdb.d/001-schema.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
                     "/test/003_allow_free_transactions.sql")
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/004_expand_stock_product_contract.sql"),
@@ -123,8 +121,8 @@ class ApiIntegrationTest {
                 VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER','Dairy Co','https://cdn.example.test/milk.png') RETURNING id
                 """, Integer.class);
         itemId = jdbc.queryForObject("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,minimal_quantity,expire_date,category)
-                VALUES (?, ?, 5, 1, '2099-01-01', 'DAIRY') RETURNING id
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,minimal_quantity,expire_date,category)
+                VALUES (?, ?, 5, 5, 1, '2099-01-01', 'DAIRY') RETURNING id
                 """, Integer.class, productId, stockId);
     }
 
@@ -147,21 +145,21 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void authenticatesRealBearerAndCookieTokensAndUsesPersistedRole() throws Exception {
+    void authenticatesRealBearerTokensAndUsesPersistedRole() throws Exception {
         String token = tokens.generateAccessToken(owner);
         mvc.perform(get("/profile").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(owner.getId().toString()))
                 .andExpect(jsonPath("$.hashPassword").doesNotExist());
-        mvc.perform(get("/profile").cookie(new Cookie("accessToken", token)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(owner.getEmail()));
+        mvc.perform(get("/profile"))
+                .andExpect(status().isForbidden());
         jdbc.update("UPDATE users SET role='ADMIN' WHERE id=?", owner.getId());
         mvc.perform(get("/user").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
     }
 
     @Test
-    void rejectsInvalidTokenEvenWhenCookieContainsValidToken() throws Exception {
+    void rejectsInvalidBearerEvenWhenRequestIncludesCookieCredentials() throws Exception {
         mvc.perform(get("/profile").header("Authorization", "Bearer invalid")
-                        .cookie(new Cookie("accessToken", tokens.generateAccessToken(owner))))
+                        .header("Cookie", "accessToken=" + tokens.generateAccessToken(owner)))
                 .andExpect(status().isForbidden());
     }
 
@@ -225,7 +223,7 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void registersHashesPasswordAndLogsInWithHttpOnlyCookies() throws Exception {
+    void registersHashesPasswordAndReturnsTokensWithoutBrowserCookies() throws Exception {
         String registration = """
                 {"name":"New User","email":"new@example.test","birthDate":"01/01/1990","rawPassword":"Strong123!"}
                 """;
@@ -236,7 +234,7 @@ class ApiIntegrationTest {
         User registered = users.findByEmail("new@example.test").orElseThrow();
         assertThat(registered.getHashPassword()).isNotEqualTo("Strong123!");
         assertThat(passwords.matches("Strong123!", registered.getHashPassword())).isTrue();
-        when(refreshTokens.createRefreshToken(registered.getId())).thenReturn("test-refresh");
+        when(refreshTokens.createRefreshToken(registered.getId(),registered.getTokenVersion())).thenReturn("test-refresh");
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString()).andReturn().getResponse();
@@ -400,7 +398,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Shelf"));
         assertThat(jdbc.queryForObject("SELECT name FROM stocks WHERE id=?", String.class, id)).isEqualTo("Shelf");
         mvc.perform(as(delete("/stocks/" + id), owner)).andExpect(status().isOk());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM stocks WHERE id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stocks WHERE id=? AND deleted_at IS NULL", Integer.class, id)).isZero();
     }
 
     @Test
@@ -441,7 +439,7 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].product.name").value("Milk"));
         mvc.perform(as(delete("/stock-products/" + id), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(delete("/stock-products/" + id), owner)).andExpect(status().isOk());
-        assertThat(count("stock_products")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_products WHERE deleted_at IS NULL", Integer.class)).isEqualTo(1);
     }
 
     @ParameterizedTest
@@ -649,8 +647,8 @@ class ApiIntegrationTest {
     @Test
     void databaseEnforcesBatchUniquenessAndProductForeignKey() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
-                VALUES (?, ?, 1, '2099-01-01', 'DAIRY')
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,expire_date,category)
+                VALUES (?, ?, 1, 1, '2099-01-01', 'DAIRY')
                 """, productId, stockId)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("DELETE FROM products WHERE id=?", productId))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
@@ -728,7 +726,7 @@ class ApiIntegrationTest {
 
     @Test
     void recipeCrudPersistsChangesAndDeleteOnlyDeactivatesRecipe() throws Exception {
-        var created = body(as(post("/recipes"), owner).contentType("application/json")
+        var created = body(as(post("/recipes"), admin).contentType("application/json")
                 .content("{\"name\":\"Soup\",\"description\":\"Dinner\",\"instructions\":\"Cook\"}"), 201);
         int recipeId = created.get("id").asInt();
         assertThat(created.get("domesticOnly").asBoolean()).isTrue();
@@ -737,21 +735,20 @@ class ApiIntegrationTest {
         var persisted = body(as(get("/recipes/{id}", recipeId), owner), 200);
         assertThat(persisted.get("name").asText()).isEqualTo("Soup");
         assertThat(persisted.get("instructions").asText()).isEqualTo("Cook");
-        mvc.perform(as(put("/recipes/{id}", recipeId), owner).contentType("application/json")
+        mvc.perform(as(put("/recipes/{id}", recipeId), admin).contentType("application/json")
                         .content("{\"name\":\"Salad\",\"description\":\"Lunch\",\"instructions\":\"Mix\",\"domesticOnly\":false,\"active\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Salad"))
                 .andExpect(jsonPath("$.domesticOnly").value(false)).andExpect(jsonPath("$.createdAt").value(persisted.get("createdAt").asText()));
-        mvc.perform(as(delete("/recipes/{id}", recipeId), owner)).andExpect(status().isOk());
+        mvc.perform(as(delete("/recipes/{id}", recipeId), admin)).andExpect(status().isNoContent());
         assertThat(count("recipes")).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT active FROM recipes WHERE id=?", Boolean.class, recipeId)).isFalse();
-        mvc.perform(as(get("/recipes/{id}", recipeId), owner)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.active").value(false)).andExpect(jsonPath("$.name").value("Salad"));
+        mvc.perform(as(get("/recipes/{id}", recipeId), owner)).andExpect(status().isNotFound());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"{}", "{\"name\":null}", "{\"name\":\"   \"}"})
     void invalidRecipeNameReturnsBadRequestWithoutPersisting(String payload) throws Exception {
-        mvc.perform(as(post("/recipes"), owner).contentType("application/json").content(payload))
+        mvc.perform(as(post("/recipes"), admin).contentType("application/json").content(payload))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"));
         assertThat(count("recipes")).isZero();
     }
@@ -761,9 +758,9 @@ class ApiIntegrationTest {
     void missingRecipeReturnsNotFound(String method) throws Exception {
         var request = request(org.springframework.http.HttpMethod.valueOf(method), "/recipes/999999");
         if (method.equals("PUT")) {
-            request.contentType("application/json").content("{\"name\":\"Missing\"}");
+            request.contentType("application/json").content("{\"name\":\"Missing\",\"instructions\":\"Mix\"}");
         }
-        mvc.perform(as(request, owner)).andExpect(status().isNotFound())
+        mvc.perform(as(request, admin)).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
         assertThat(count("recipes")).isZero();
     }
@@ -781,7 +778,7 @@ class ApiIntegrationTest {
                 org.springframework.test.util.ReflectionTestUtils.getField(aiClient, "restClient");
         var builder = original.mutate().baseUrl("http://ai.example.test");
         var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/chats/existing/messages"))
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/v1/chats/existing/messages"))
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
         org.springframework.test.util.ReflectionTestUtils.setField(aiClient, "restClient", builder.build());
         try {

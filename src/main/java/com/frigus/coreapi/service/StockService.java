@@ -49,6 +49,7 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
 
     @Override
     protected void authorizeRead(Stock stock) {
+        if(stock.getDeletedAt()!=null) throw new NotFoundException();
         groupAccessService.requireGroupAccess(stock.getGroup().getId());
     }
 
@@ -61,7 +62,7 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
     public StockResponseDto create(StockCreateRequestDto dto) {
         Group group = groupRepository.findById(dto.getGroupId())
                 .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "O grupo informado não existe"));
-        groupAccessService.requireGroupAccess(group.getId());
+        groupAccessService.requireGroupWriteAccess(group.getId());
 
         Stock stock = mapper.toEntity(dto);
         stock.setGroup(group);
@@ -78,10 +79,11 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
     public StockResponseDto update(Integer id, StockUpdateRequestDto dto) {
         Stock stock = getRequiredEntity(id);
         authorizeRead(stock);
+        groupAccessService.requireGroupWriteAccess(stock.getGroup().getId());
 
         Group targetGroup = groupRepository.findById(dto.getGroupId())
                 .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "O grupo informado não existe"));
-        groupAccessService.requireGroupAccess(targetGroup.getId());
+        groupAccessService.requireGroupWriteAccess(targetGroup.getId());
 
         stock.setGroup(targetGroup);
         stock.setName(dto.getName().trim());
@@ -99,5 +101,10 @@ public class StockService extends BaseService<Stock, Integer, StockCreateRequest
         } catch (IllegalArgumentException exception) {
             throw new BadRequestException("Filtro inválido", "O filtro " + name + " é inválido");
         }
+    }
+
+    @Override @Transactional public void delete(Integer id) {
+        Stock stock=getRequiredEntity(id);groupAccessService.requireGroupWriteAccess(stock.getGroup().getId());
+        stock.setDeletedAt(Instant.now());repository.save(stock);
     }
 }

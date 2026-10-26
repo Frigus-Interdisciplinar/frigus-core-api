@@ -41,8 +41,14 @@ public class StockProduct {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
+    @NotNull
+    @Column(name = "initial_quantity", nullable = false)
+    private Integer initialQuantity;
+
     @Column(name = "minimal_quantity")
     private Integer minimalQuantity;
+    private java.time.Instant deletedAt;
+    @Column(length=120) private String batch;
 
     @Column(name = "purchase_unit_price", precision = 10, scale = 2)
     private BigDecimal purchaseUnitPrice;

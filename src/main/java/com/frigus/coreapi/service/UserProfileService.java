@@ -47,6 +47,9 @@ public class UserProfileService {
         if (dto.getBirthDate() != null) {
             user.setBirthDate(dto.getBirthDate());
         }
+        if (dto.getProfilePictureUrl() != null) {
+            user.setProfilePictureUrl(dto.getProfilePictureUrl());
+        }
 
         User savedUser = repository.save(user);
         return mapper.toDto(savedUser);
@@ -71,6 +74,7 @@ public class UserProfileService {
         }
 
         user.setHashPassword(passwordEncoder.encode(dto.getNewPassword()));
+        user.setTokenVersion(user.getTokenVersion()+1);
         repository.save(user);
     }
 

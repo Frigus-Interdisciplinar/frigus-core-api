@@ -80,8 +80,8 @@ class MoneySavingPersistenceTest {
                 VALUES ('Milk','DAIRY','FRIDGE',99.00,'UNIT') RETURNING id
                 """, Integer.class);
         itemId = jdbc.queryForObject("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
-                VALUES (?, ?, 5, '2099-01-01', 'DAIRY') RETURNING id
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,expire_date,category)
+                VALUES (?, ?, 5, 5, '2099-01-01', 'DAIRY') RETURNING id
                 """, Integer.class, productId, stockId);
         GroupAccessService access = new GroupAccessService(null, null) {
             @Override public void requireGroupAccess(UUID id) {

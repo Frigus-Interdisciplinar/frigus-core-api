@@ -84,7 +84,7 @@ class AuthServiceTest {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Senha@123", "hash")).thenReturn(true);
         when(tokenProvider.generateAccessToken(user)).thenReturn("access");
-        when(refreshTokenService.createRefreshToken(user.getId())).thenReturn("refresh");
+        when(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion())).thenReturn("refresh");
         when(userMapper.toDto(user)).thenReturn(dto);
 
         var result = service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("Senha@123").build());
@@ -104,9 +104,10 @@ class AuthServiceTest {
     void rotatesRefreshTokenAndRejectsInvalidOrUnknownUsers() {
         UserResponseDto dto = UserResponseDto.builder().id(user.getId()).build();
         when(refreshTokenService.validateAndGetUserId("old")).thenReturn(user.getId());
+        when(refreshTokenService.isCurrentVersion("old",0)).thenReturn(true);
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(tokenProvider.generateAccessToken(user)).thenReturn("new-access");
-        when(refreshTokenService.createRefreshToken(user.getId())).thenReturn("new-refresh");
+        when(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion())).thenReturn("new-refresh");
         when(userMapper.toDto(user)).thenReturn(dto);
 
         var result = service.refreshToken("old");
@@ -148,9 +149,13 @@ class AuthServiceTest {
         when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
         when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.empty());
         when(userRepository.findByEmail("novo@frigus.com")).thenReturn(Optional.empty());
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
         when(tokenProvider.generateAccessToken(any(User.class))).thenReturn("access-token");
-        when(refreshTokenService.createRefreshToken(any())).thenReturn("refresh-token");
+        when(refreshTokenService.createRefreshToken(any(UUID.class), anyInt())).thenReturn("refresh-token");
         when(userMapper.toDto(any(User.class))).thenReturn(UserResponseDto.builder().email("novo@frigus.com").build());
 
         var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
@@ -176,7 +181,7 @@ class AuthServiceTest {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
         when(userRepository.save(user)).thenReturn(user);
         when(tokenProvider.generateAccessToken(user)).thenReturn("access-token");
-        when(refreshTokenService.createRefreshToken(user.getId())).thenReturn("refresh-token");
+        when(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion())).thenReturn("refresh-token");
         when(userMapper.toDto(user)).thenReturn(UserResponseDto.builder().email(user.getEmail()).build());
 
         var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
@@ -186,4 +191,3 @@ class AuthServiceTest {
         verify(userRepository).save(user);
     }
 }
-

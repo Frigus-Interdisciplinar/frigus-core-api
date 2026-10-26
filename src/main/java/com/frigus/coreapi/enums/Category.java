@@ -9,4 +9,9 @@ public enum Category {
     BEVERAGE,
     CLEANING,
     PERSONAL_HYGIENE,
+    FISH,
+    FROZEN,
+    SWEETS,
+    CANNED,
+    SEASONING,
 }

@@ -30,6 +30,7 @@ public class Discard {
 
     @Column(name = "reason", length = Integer.MAX_VALUE)
     private String reason;
+    @OneToOne(fetch=FetchType.LAZY) @JoinColumn(name="movement_id") private StockMovement movement;
 
     @Column(name = "reason_code", length = 24)
     private String reasonCode;

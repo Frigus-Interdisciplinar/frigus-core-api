@@ -15,6 +15,7 @@ import java.util.UUID;
 public class UserResponseDto {
     private UUID id;
     private String name;
+    private String profilePictureUrl;
     private String email;
     private AccountType accountType;
 

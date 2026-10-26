@@ -42,6 +42,7 @@ public class IngredientService extends BaseService<RecipeIngredient, Integer, In
         Product product = productRepository.findById(dto.getProductId())
                 .orElseThrow(() -> new NotFoundException("Produto não encontrado", "Nenhum produto foi encontrado com o ID informado"));
 
+        if(product.getOwnerGroup()!=null) throw new com.frigus.coreapi.exception.BadRequestException("Produto privado","Receitas do catálogo exigem produtos globais");
         if (repository.existsByRecipeIdAndProductId(recipe.getId(), product.getId())) {
             throw new ConflictException("Ingrediente já cadastrado", "Este produto já foi adicionado como ingrediente desta receita");
         }
@@ -70,6 +71,7 @@ public class IngredientService extends BaseService<RecipeIngredient, Integer, In
             if (repository.existsByRecipeIdAndProductId(ingredient.getRecipe().getId(), newProduct.getId())) {
                 throw new ConflictException("Ingrediente já cadastrado", "Este produto já foi adicionado como ingrediente desta receita");
             }
+            if(newProduct.getOwnerGroup()!=null) throw new com.frigus.coreapi.exception.BadRequestException("Produto privado","Receitas do catálogo exigem produtos globais");
             ingredient.setProduct(newProduct);
         }
 
@@ -113,6 +115,7 @@ public class IngredientService extends BaseService<RecipeIngredient, Integer, In
             throw new ConflictException("Ingrediente já cadastrado", "Este produto já foi adicionado como ingrediente desta receita");
         }
 
+        if (targetProduct.getOwnerGroup() != null) throw new com.frigus.coreapi.exception.BadRequestException("Produto privado", "Receitas do catálogo exigem produtos globais");
         ingredient.setRecipe(targetRecipe);
         ingredient.setProduct(targetProduct);
         if (dto.getQuantity() != null) {
@@ -172,6 +175,7 @@ public class IngredientService extends BaseService<RecipeIngredient, Integer, In
             Product product = productRepository.findById(item.getProductId())
                     .orElseThrow(() -> new NotFoundException("Produto não encontrado", "Nenhum produto foi encontrado com o ID informado"));
 
+            if (product.getOwnerGroup() != null) throw new com.frigus.coreapi.exception.BadRequestException("Produto privado", "Receitas do catálogo exigem produtos globais");
             String unit = (item.getUnit() != null && !item.getUnit().isBlank())
                     ? item.getUnit().trim()
                     : (product.getUnitOfMeasure() != null ? product.getUnitOfMeasure().name() : null);

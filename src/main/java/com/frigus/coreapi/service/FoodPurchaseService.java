@@ -62,7 +62,7 @@ public class FoodPurchaseService {
             int before = lockItemQuantity(itemId);
             if ((long) before + line.quantity() > Integer.MAX_VALUE) throw conflict("Quantidade excede o limite do estoque");
             ledger.ensureOpening(itemId, before);
-            jdbc.update("UPDATE stock_products SET quantity=quantity+? WHERE id=?", line.quantity(), itemId);
+            jdbc.update("UPDATE stock_products SET quantity=quantity+?, initial_quantity=initial_quantity+? WHERE id=?", line.quantity(), line.quantity(), itemId);
             Long lineId = jdbc.queryForObject("""
                     INSERT INTO food_purchase_lines(purchase_id,stock_key,stock_product_id,product_id,product_name,category,
                       category_group,unit_of_measure,expire_date,quantity,unit_price)
@@ -138,7 +138,7 @@ public class FoodPurchaseService {
                 int delta = changed.quantity() - previous.quantity();
                 if ((long) balance + delta < 0 || (long) balance + delta > Integer.MAX_VALUE)
                     throw conflict("Saldo inválido para corrigir a compra");
-                jdbc.update("UPDATE stock_products SET quantity=quantity+? WHERE id=?", delta, itemId);
+                jdbc.update("UPDATE stock_products SET quantity=quantity+?, initial_quantity=GREATEST(0, initial_quantity+?) WHERE id=?", delta, delta, itemId);
                 affectedItems.add(itemId);
             }
             jdbc.update("""
@@ -171,7 +171,7 @@ public class FoodPurchaseService {
             if (itemId == null) throw conflict("Item removido: compra não pode ser excluída");
             int balance = lockItemQuantity(itemId);
             if (balance < line.quantity()) throw conflict("Saldo insuficiente para excluir a compra");
-            jdbc.update("UPDATE stock_products SET quantity=quantity-? WHERE id=?", line.quantity(), itemId);
+            jdbc.update("UPDATE stock_products SET quantity=quantity-?, initial_quantity=GREATEST(0, initial_quantity-?) WHERE id=?", line.quantity(), line.quantity(), itemId);
             jdbc.update("DELETE FROM money_supplies WHERE purchase_line_id=?", line.id());
             ledger.rebuild(itemId);
         }
@@ -218,8 +218,8 @@ public class FoodPurchaseService {
                 (rs, n) -> rs.getInt(1), stockId, productId, expiry);
         if (!ids.isEmpty()) return ids.get(0);
         return jdbc.queryForObject("""
-                INSERT INTO stock_products(product_id,stock_id,quantity,expire_date,category)
-                VALUES (?,?,0,?,?::category_enum) RETURNING id
+                INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,expire_date,category)
+                VALUES (?,?,0,0,?,?::category_enum) RETURNING id
                 """, Integer.class, productId, stockId, expiry, category);
     }
 

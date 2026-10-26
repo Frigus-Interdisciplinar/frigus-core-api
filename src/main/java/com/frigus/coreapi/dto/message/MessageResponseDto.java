@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,4 +22,5 @@ public class MessageResponseDto {
     private Integer relatedShoppingListProductId;
     private Instant createdAt;
     private Instant updatedAt;
+    private List<MessageAttachmentResponseDto> attachments;
 }

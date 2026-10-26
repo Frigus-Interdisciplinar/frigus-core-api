@@ -21,4 +21,12 @@ public interface MessageRepository extends BaseRepository<Message, Integer> {
            "WHERE m.conversationParticipants.id.conversationId = :conversationId " +
            "ORDER BY m.createdAt DESC LIMIT 1")
     Optional<Message> findLatestMessageByConversationId(@Param("conversationId") UUID conversationId);
+
+    @Query(value = "SELECT m.* FROM messages m WHERE m.conversation_id = :conversationId " +
+            "AND to_tsvector('simple', coalesce(m.content, '')) @@ plainto_tsquery('simple', :search) " +
+            "ORDER BY m.created_at DESC",
+            countQuery = "SELECT count(*) FROM messages m WHERE m.conversation_id = :conversationId " +
+                    "AND to_tsvector('simple', coalesce(m.content, '')) @@ plainto_tsquery('simple', :search)",
+            nativeQuery = true)
+    Page<Message> searchByConversationId(@Param("conversationId") UUID conversationId, @Param("search") String search, Pageable pageable);
 }

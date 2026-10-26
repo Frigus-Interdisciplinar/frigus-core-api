@@ -131,11 +131,11 @@ class ConversationControllerTest {
                 MessageResponseDto.builder().id(1).content("Olá").build()
         ));
 
-        when(messageService.getMessagesHistory(conversationId, pageable)).thenReturn(expectedPage);
+        when(messageService.getMessagesHistory(conversationId, pageable, null)).thenReturn(expectedPage);
 
-        Page<MessageResponseDto> result = conversationController.getMessages(conversationId, pageable);
+        Page<MessageResponseDto> result = conversationController.getMessages(conversationId, pageable, null);
 
         assertThat(result).hasSize(1);
-        verify(messageService).getMessagesHistory(conversationId, pageable);
+        verify(messageService).getMessagesHistory(conversationId, pageable, null);
     }
 }

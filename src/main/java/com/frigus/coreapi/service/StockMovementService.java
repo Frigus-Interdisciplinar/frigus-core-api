@@ -58,13 +58,23 @@ public class StockMovementService extends BaseService<StockMovement, Integer, St
 
     @Transactional
     public StockMovementResponseDto create(Integer stockProductId, StockMovementCreateRequestDto dto) {
+        return apply(stockProductId, dto, dto.getMovementType() == MovementType.OUT ? "CONSUMPTION" : "INVENTORY");
+    }
+
+    @Transactional
+    public StockMovementResponseDto createDiscard(Integer stockProductId, StockMovementCreateRequestDto dto) {
+        return apply(stockProductId, dto, "DISCARD");
+    }
+
+    private StockMovementResponseDto apply(Integer stockProductId, StockMovementCreateRequestDto dto, String purpose) {
+        StockProduct stockProduct = stockProductRepository.findByIdForUpdate(stockProductId)
+                .orElseThrow(() -> new NotFoundException("Produto do estoque não encontrado", "O item informado não existe"));
+        groupAccessService.requireGroupAccess(stockProduct.getStock().getGroup().getId());
+        groupAccessService.requireGroupWriteAccess(stockProduct.getStock().getGroup().getId());
         if (dto.getReasonCode() != null &&
                 (!"CONSUMED".equals(dto.getReasonCode()) || dto.getMovementType() != MovementType.OUT)) {
             throw new BadRequestException("Motivo inválido", "CONSUMED é permitido apenas para saídas OUT");
         }
-        StockProduct stockProduct = stockProductRepository.findByIdForUpdate(stockProductId)
-                .orElseThrow(() -> new NotFoundException("Produto do estoque não encontrado", "O item informado não existe"));
-        groupAccessService.requireGroupAccess(stockProduct.getStock().getGroup().getId());
 
         int balanceBefore = stockProduct.getQuantity();
         int balanceAfter = calculateBalanceAfter(balanceBefore, dto);
@@ -72,6 +82,7 @@ public class StockMovementService extends BaseService<StockMovement, Integer, St
 
         User user = groupAccessService.requireCurrentUser();
         StockMovement movement = mapper.toEntity(dto);
+        movement.setPurpose(purpose);
         movement.setStockProduct(stockProduct);
         movement.setUser(user);
         movement.setBalanceAfter(balanceAfter);
