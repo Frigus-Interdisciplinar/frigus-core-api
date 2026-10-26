@@ -9,6 +9,7 @@ import com.frigus.coreapi.mapper.ProductMapper;
 import com.frigus.coreapi.model.Product;
 import com.frigus.coreapi.repository.ProductRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -38,6 +39,7 @@ public class ProductService extends BaseService<
         this(repository, mapper, null);
     }
 
+    @Autowired
     public ProductService(
             ProductRepository repository,
             ProductMapper mapper,
