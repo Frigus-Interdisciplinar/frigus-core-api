@@ -9,12 +9,20 @@ import com.frigus.coreapi.mapper.ProductMapper;
 import com.frigus.coreapi.model.Product;
 import com.frigus.coreapi.repository.ProductRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
 
+import com.frigus.coreapi.service.GroupAccessService;
+import com.frigus.coreapi.exception.ForbiddenException;
+import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.model.User;
+import java.util.UUID;
+
 @Service
+
 public class ProductService extends BaseService<
         Product,
         Integer,
@@ -23,19 +31,66 @@ public class ProductService extends BaseService<
         ProductMapper,
         ProductRepository> {
 
+    private final GroupAccessService groupAccessService;
+
     public ProductService(
             ProductRepository repository,
             ProductMapper mapper) {
+        this(repository, mapper, null);
+    }
+
+    @Autowired
+    public ProductService(
+            ProductRepository repository,
+            ProductMapper mapper,
+            GroupAccessService groupAccessService) {
         super(repository, mapper);
+        this.groupAccessService = groupAccessService;
     }
 
     @Transactional
     public ProductResponseDto create(ProductCreateRequestDto dto) {
         Product product = mapper.toEntity(dto);
-        ensureUniqueName(product.getName(), null);
+        if (dto.getOwnerGroupId() != null) {
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(dto.getOwnerGroupId());
+            }
+            product.setOwnerGroupId(dto.getOwnerGroupId());
+            ensureUniqueNameForGroup(product.getName(), dto.getOwnerGroupId(), null);
+        } else {
+            if (groupAccessService != null) {
+                User user = groupAccessService.requireCurrentUser();
+                if (user.getRole() != Role.ADMIN) {
+                    throw new ForbiddenException(
+                            "Apenas administradores podem criar produtos globais",
+                            "Informe o ownerGroupId do seu grupo");
+                }
+            }
+            ensureUniqueName(product.getName(), null);
+        }
 
         product.setCreatedAt(Instant.now());
         return mapper.toDto(repository.save(product));
+    }
+
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<ProductResponseDto> findAllForGroup(UUID groupId, org.springframework.data.domain.Pageable pageable) {
+        if (groupId != null) {
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(groupId);
+            }
+            return repository.findAllGlobalOrByGroupId(groupId, pageable).map(mapper::toDto);
+        }
+        return repository.findAll(pageable).map(mapper::toDto);
+    }
+
+    private void ensureUniqueNameForGroup(String name, UUID groupId, Integer currentProductId) {
+        Optional<Product> duplicate = repository.findFirstByNameIgnoreCaseAndOwnerGroupId(name, groupId);
+        if (duplicate.isPresent() && !duplicate.get().getId().equals(currentProductId)) {
+            throw new ConflictException(
+                    "Nome de produto já cadastrado",
+                    "Já existe um produto com este nome cadastrado para o seu grupo");
+        }
     }
 
     @Transactional
