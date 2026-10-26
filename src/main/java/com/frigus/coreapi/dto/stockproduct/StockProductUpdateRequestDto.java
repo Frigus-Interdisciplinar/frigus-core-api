@@ -2,6 +2,8 @@ package com.frigus.coreapi.dto.stockproduct;
 
 import com.frigus.coreapi.enums.Category;
 import com.frigus.coreapi.enums.StoragePlace;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -19,6 +22,10 @@ import java.time.LocalDate;
 public class StockProductUpdateRequestDto {
     @PositiveOrZero(message = "A quantidade mínima não pode ser negativa")
     private Integer minimalQuantity;
+
+    @DecimalMin(value = "0.00", inclusive = false, message = "O preço de aquisição deve ser maior que zero")
+    @Digits(integer = 8, fraction = 2, message = "O preço de aquisição deve ter no máximo 8 dígitos inteiros e 2 decimais")
+    private BigDecimal purchaseUnitPrice;
 
     private LocalDate expireDate;
 
@@ -40,6 +47,6 @@ public class StockProductUpdateRequestDto {
 
     public boolean isEmpty() {
         return minimalQuantity == null && expireDate == null && name == null && category == null
-                && storagePlace == null && quantity == null && initialQuantity == null && batch == null;
+                && storagePlace == null && quantity == null && initialQuantity == null && batch == null && purchaseUnitPrice == null;
     }
 }

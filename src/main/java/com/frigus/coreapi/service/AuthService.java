@@ -1,5 +1,6 @@
 package com.frigus.coreapi.service;
 
+import com.frigus.coreapi.dto.user.GoogleLoginRequestDto;
 import com.frigus.coreapi.dto.user.LoginRequestDto;
 import com.frigus.coreapi.dto.user.LoginResponseDto;
 import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.frigus.coreapi.service.GoogleTokenVerifierService.GoogleUserData;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,6 +32,7 @@ public class AuthService {
     private final TokenProvider tokenProvider;
     private final UserMapper userMapper;
     private final RefreshTokenService refreshTokenService;
+    private final GoogleTokenVerifierService googleTokenVerifierService;
 
     public UserResponseDto register(UserRegisterRequestDto body) {
         if (userRepository.existsByEmail(body.getEmail())) {
@@ -46,7 +49,7 @@ public class AuthService {
                 .hashPassword(hashPassword)
                 .birthDate(body.getBirthDate())
                 .name(body.getName())
-                .accountType(body.getAccountType() == null ? AccountType.DOMESTIC : body.getAccountType())
+                .accountType(AccountType.DOMESTIC)
                 .role(Role.USER)
                 .createdAt(Instant.now())
                 .build();
@@ -64,13 +67,47 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto body) {
         User user = userRepository.findByEmail(body.getEmail()).orElseThrow(() -> new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos"));
 
-        if (user.getDeletedAt()!=null || !passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
-            throw new BadRequestException("Senha incorreta", "Senha incorreta");
+        if (user.getHashPassword() == null) {
+            throw new BadRequestException("Conta vinculada ao Google", "Esta conta foi cadastrada utilizando o Google. Acesse usando 'Entrar com Google' ou redefina sua senha.");
+        }
+
+        if (!passwordEncoder.matches(body.getRawPassword(), user.getHashPassword())) {
+            throw new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos");
         }
 
         return LoginResponseDto.builder()
                 .accessToken(tokenProvider.generateAccessToken(user))
-                .refreshToken(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion()))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion()))
+                .user(userMapper.toDto(user))
+                .build();
+    }
+
+    public LoginResponseDto loginWithGoogle(GoogleLoginRequestDto body) {
+        GoogleUserData googleData = googleTokenVerifierService.verify(body.getIdToken());
+
+        User user = userRepository.findByGoogleId(googleData.getGoogleId())
+                .orElseGet(() -> userRepository.findByEmail(googleData.getEmail()).orElse(null));
+
+        if (user != null) {
+            if (user.getGoogleId() == null) {
+                user.setGoogleId(googleData.getGoogleId());
+                user = userRepository.save(user);
+            }
+        } else {
+            user = User.builder()
+                    .email(googleData.getEmail())
+                    .googleId(googleData.getGoogleId())
+                    .name(googleData.getName())
+                    .accountType(AccountType.DOMESTIC)
+                    .role(Role.USER)
+                    .createdAt(Instant.now())
+                    .build();
+            user = userRepository.save(user);
+        }
+
+        return LoginResponseDto.builder()
+                .accessToken(tokenProvider.generateAccessToken(user))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion()))
                 .user(userMapper.toDto(user))
                 .build();
     }
@@ -83,12 +120,13 @@ public class AuthService {
         }
 
         User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("Usuário não encontrado", "Usuário inválido"));
+        if (!refreshTokenService.isCurrentVersion(refreshToken, user.getTokenVersion())) {
+            throw new UnauthorizedException("Refresh token inválido ou expirado", "Faça login novamente");
+        }
 
-        if(user.getDeletedAt()!=null || !refreshTokenService.isCurrentVersion(refreshToken,user.getTokenVersion()))
-            throw new UnauthorizedException("Sessão revogada","Faça login novamente");
         refreshTokenService.deleteRefreshToken(refreshToken);
         String newAccessToken = tokenProvider.generateAccessToken(user);
-        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion());
+        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion());
 
         return LoginResponseDto.builder()
                 .accessToken(newAccessToken)
@@ -98,8 +136,10 @@ public class AuthService {
     }
 
     public void logout(String refreshToken) {
-        if(refreshToken != null) refreshTokenService.deleteRefreshToken(refreshToken);
+        if(refreshToken != null) {
+            refreshTokenService.deleteRefreshToken(refreshToken);
+        }
     }
 
-    // PasswordRecoveryService implements the public password recovery flow.
+    // TODO: implementar recuperacao de senha
 }

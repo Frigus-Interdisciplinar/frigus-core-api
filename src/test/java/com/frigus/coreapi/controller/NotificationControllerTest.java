@@ -75,11 +75,13 @@ class NotificationControllerTest {
     @Test
     void reportsPositiveAdClickTotalThroughHttpEndpoint() throws Exception {
         mockMvc.perform(post("/notifications/ad-clicks")
+                        .header("X-Ad-Clicks-Timestamp", 1L)
+                        .header("X-Ad-Clicks-Signature", "test")
                         .contentType("application/json")
                         .content("{\"totalClicks\":5000}"))
                 .andExpect(status().isNoContent());
 
-        verify(notificationService).notifyAdClickMilestones(5000L);
+        verify(notificationService).notifyAdClickMilestones(5000L, 1L, "test");
     }
 
     @Test

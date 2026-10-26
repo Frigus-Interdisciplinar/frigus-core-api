@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,12 +51,12 @@ class ProductControllerTest {
         ProductResponseDto product = ProductResponseDto.builder().id(5).name("Leite").build();
         ProductCreateRequestDto create = createRequest();
         ProductUpdateRequestDto update = updateRequest();
-        when(productService.findAll(page)).thenReturn(new PageImpl<>(List.of(product)));
+        when(productService.findAllForGroup(null, page)).thenReturn(new PageImpl<>(List.of(product)));
         when(productService.findById(5)).thenReturn(product);
         when(productService.create(create)).thenReturn(product);
         when(productService.update(5, update)).thenReturn(product);
 
-        assertThat(controller.findAll(page).getContent()).containsExactly(product);
+        assertThat(controller.findAll(null, page).getContent()).containsExactly(product);
         assertThat(controller.findById(5)).isSameAs(product);
         assertThat(controller.create(create)).isSameAs(product);
         assertThat(controller.update(5, update)).isSameAs(product);
@@ -77,7 +78,7 @@ class ProductControllerTest {
     @Test
     void exposesPublicReadRoutes() throws NoSuchMethodException {
         RequestMapping controllerMapping = ProductController.class.getAnnotation(RequestMapping.class);
-        GetMapping listMapping = ProductController.class.getMethod("findAll", Pageable.class)
+        GetMapping listMapping = ProductController.class.getMethod("findAll", UUID.class, Pageable.class)
                 .getAnnotation(GetMapping.class);
         GetMapping itemMapping = BaseController.class.getMethod("findById", Object.class)
                 .getAnnotation(GetMapping.class);
@@ -89,9 +90,15 @@ class ProductControllerTest {
 
     @Test
     void restrictsCatalogMutationsToAdmins() throws NoSuchMethodException {
-        assertAdminOnly("create", ProductCreateRequestDto.class);
         assertAdminOnly("update", Integer.class, ProductUpdateRequestDto.class);
         assertAdminOnly("delete", Integer.class);
+    }
+
+    @Test
+    void allowsAuthenticatedUsersToCreateProducts() throws NoSuchMethodException {
+        PreAuthorize authorization = ProductController.class.getMethod("create", ProductCreateRequestDto.class)
+                .getAnnotation(PreAuthorize.class);
+        assertThat(authorization).isNull();
     }
 
     private void assertAdminOnly(String name, Class<?>... parameterTypes) throws NoSuchMethodException {

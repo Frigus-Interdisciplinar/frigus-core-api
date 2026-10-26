@@ -18,7 +18,10 @@ public class DiscardCreateRequestDto {
     @NotNull(message = "O produto do estoque é obrigatório")
     private Integer stockProductId;
 
+    @NotNull(message = "A quantidade é obrigatória")
+    private Integer quantity;
+
     @Size(max = 2000, message = "O motivo deve ter no máximo 2000 caracteres")
     private String reason;
-    @NotNull @jakarta.validation.constraints.Positive private Integer quantity;
+    private String reasonCode;
 }

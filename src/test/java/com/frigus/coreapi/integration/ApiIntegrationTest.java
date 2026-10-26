@@ -1,6 +1,7 @@
 package com.frigus.coreapi.integration;
 
 import com.frigus.coreapi.model.User;
+import jakarta.servlet.http.Cookie;
 import com.frigus.coreapi.client.FrigusAiClient;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.security.TokenProvider;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -63,7 +65,11 @@ class ApiIntegrationTest {
             .withDatabaseName("frigus_test")
             .withStartupTimeout(java.time.Duration.ofMinutes(3))
             .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/003_allow_free_transactions.sql"),
-                    "/test/003_allow_free_transactions.sql");
+                    "/test/003_allow_free_transactions.sql")
+            .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/004_expand_stock_product_contract.sql"),
+                    "/test/004_expand_stock_product_contract.sql")
+            .withCopyFileToContainer(MountableFile.forHostPath("db/migrations/006_money_saving.sql"),
+                    "/test/006_money_saving.sql");
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry properties) {
@@ -76,6 +82,7 @@ class ApiIntegrationTest {
 
     @Autowired WebApplicationContext context;
     @Autowired JdbcTemplate jdbc;
+    @Autowired StringRedisTemplate redis;
     @Autowired UserRepository users;
     @Autowired TokenProvider tokens;
     @Autowired PasswordEncoder passwords;
@@ -110,8 +117,8 @@ class ApiIntegrationTest {
         otherGroupId = group(outsider, "Other group");
         stockId = jdbc.queryForObject("INSERT INTO stocks(group_id,name) VALUES (?, 'Fridge') RETURNING id", Integer.class, groupId);
         productId = jdbc.queryForObject("""
-                INSERT INTO products(name,category,storage_place,unit_price,unit_of_measure)
-                VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER') RETURNING id
+                INSERT INTO products(name,category,storage_place,unit_price,unit_of_measure,brand,image_url)
+                VALUES ('Milk','DAIRY','FRIDGE',8.50,'LITER','Dairy Co','https://cdn.example.test/milk.png') RETURNING id
                 """, Integer.class);
         itemId = jdbc.queryForObject("""
                 INSERT INTO stock_products(product_id,stock_id,quantity,initial_quantity,minimal_quantity,expire_date,category)
@@ -130,6 +137,8 @@ class ApiIntegrationTest {
         mvc.perform(get("/products").param("page", "0").param("size", "1").param("sort", "id,asc"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].id").value(productId))
                 .andExpect(jsonPath("$.content[0].unitPrice").value(8.50))
+                .andExpect(jsonPath("$.content[0].brand").value("Dairy Co"))
+                .andExpect(jsonPath("$.content[0].imageUrl").value("https://cdn.example.test/milk.png"))
                 .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.size").value(1));
         mvc.perform(get("/plans/active")).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].planCode").isString());
@@ -181,11 +190,16 @@ class ApiIntegrationTest {
 
     @Test
     void adminCreatesUpdatesAndDeletesCatalogProduct() throws Exception {
-        JsonNode created = body(as(post("/products"), admin).contentType("application/json").content(productBody(" Bread ")), 201);
+        String createPayload = productBody(" Bread ").replace("}",
+                ",\"brand\":\"  Bakery Co  \",\"imageUrl\":\"https://cdn.example.test/bread.png\"}");
+        JsonNode created = body(as(post("/products"), admin).contentType("application/json").content(createPayload), 201);
         int id = created.get("id").asInt();
         assertThat(created.get("name").asString()).isEqualTo("Bread");
+        assertThat(created.get("brand").asString()).isEqualTo("Bakery Co");
         mvc.perform(as(put("/products/" + id), admin).contentType("application/json").content(productBody("Rice")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Rice"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Rice"))
+                .andExpect(jsonPath("$.brand").value("Bakery Co"))
+                .andExpect(jsonPath("$.imageUrl").value("https://cdn.example.test/bread.png"));
         mvc.perform(as(delete("/products/" + id), admin)).andExpect(status().isNoContent());
         mvc.perform(get("/products/" + id)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
@@ -223,10 +237,9 @@ class ApiIntegrationTest {
         when(refreshTokens.createRefreshToken(registered.getId(),registered.getTokenVersion())).thenReturn("test-refresh");
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString()).andReturn().getResponse();
-        assertThat(login.getHeaders("Set-Cookie")).isEmpty();
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString()).andReturn().getResponse();
+        assertThat(login.getHeaders("Set-Cookie")).hasSize(2).allSatisfy(cookie ->
+                assertThat(cookie).contains("HttpOnly", "Secure", "Path=/", "SameSite=None"));
         mvc.perform(post("/auth/register").contentType("application/json").content(registration)).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email='new@example.test'", Integer.class)).isEqualTo(1);
     }
@@ -235,6 +248,78 @@ class ApiIntegrationTest {
     void missingRefreshTokenReturnsUnauthorizedWithoutSettingCookies() throws Exception {
         mvc.perform(post("/auth/refresh")).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED")).andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    void corsAllowsConfiguredOriginAndRejectsOtherOrigins() throws Exception {
+        mvc.perform(options("/auth/login").header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"));
+        mvc.perform(options("/auth/login").header("Origin", "https://evil.example.test")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
+    void cookieMutationRequiresCsrfToken() throws Exception {
+        Cookie authCookie = new Cookie("accessToken", tokens.generateAccessToken(owner));
+        mvc.perform(post("/shopping-lists").cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isForbidden());
+        assertThat(count("shopping_lists")).isZero();
+
+        var csrfResponse = mvc.perform(get("/auth/csrf")).andExpect(status().isOk()).andReturn().getResponse();
+        String csrfToken = json.readTree(csrfResponse.getContentAsString()).get("token").asString();
+        Cookie csrfCookie = csrfResponse.getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getSecure()).isTrue();
+        mvc.perform(post("/auth/refresh").cookie(csrfCookie, new Cookie("refreshToken", "invalid"))
+                        .header("X-XSRF-TOKEN", csrfToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void bearerMutationWorksWithCookiesButCookieRefreshStillRequiresCsrf() throws Exception {
+        Cookie authCookie = new Cookie("accessToken", tokens.generateAccessToken(outsider));
+        mvc.perform(as(post("/shopping-lists"), owner).cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isCreated());
+        assertThat(count("shopping_lists")).isEqualTo(1);
+
+        mvc.perform(post("/shopping-lists").header("Authorization", "Bearer invalid").cookie(authCookie)
+                        .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
+                .andExpect(status().isForbidden());
+        assertThat(count("shopping_lists")).isEqualTo(1);
+
+        mvc.perform(post("/auth/refresh").header("Authorization", "Bearer " + tokens.generateAccessToken(owner))
+                        .cookie(new Cookie("refreshToken", "some-refresh")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void registrationWorksWithStaleAuthCookie() throws Exception {
+        mvc.perform(post("/auth/register").cookie(new Cookie("accessToken", "stale"))
+                        .contentType("application/json")
+                        .content("{\"name\":\"New User\",\"email\":\"new@example.test\",\"birthDate\":\"01/01/1990\",\"rawPassword\":\"Strong123!\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void authenticationRateLimitReturnsRetryAfter() throws Exception {
+        redis.delete("rate-limit:/auth/login:ip:127.0.0.1");
+        for (int i = 0; i < 10; i++) {
+            mvc.perform(post("/auth/login").contentType("application/json")
+                    .content("{\"email\":\"unknown@example.test\",\"rawPassword\":\"Strong123!\"}"))
+                    .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(post("/auth/login").contentType("application/json")
+                        .content("{\"email\":\"unknown@example.test\",\"rawPassword\":\"Strong123!\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"));
+        redis.delete("rate-limit:/auth/login:ip:127.0.0.1");
     }
 
     @ParameterizedTest
@@ -250,6 +335,59 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].groupId").value(groupId.toString()));
         mvc.perform(as(get("/stocks").param("groupId", groupId.toString()), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(get("/stocks/" + stockId), admin)).andExpect(status().isOk());
+    }
+
+    @Test
+    void shoppingListsAndItemsStayWithinCurrentGroups() throws Exception {
+        UUID ownList = jdbc.queryForObject("INSERT INTO shopping_lists(stock_id,status) VALUES (?, 'OPEN') RETURNING id",
+                UUID.class, stockId);
+        int foreignStock = jdbc.queryForObject("INSERT INTO stocks(group_id,name) VALUES (?, 'Other') RETURNING id",
+                Integer.class, otherGroupId);
+        UUID foreignList = jdbc.queryForObject("INSERT INTO shopping_lists(stock_id,status) VALUES (?, 'OPEN') RETURNING id",
+                UUID.class, foreignStock);
+        int foreignItem = jdbc.queryForObject("INSERT INTO shopping_list_products(list_id,product_id,status,quantity) " +
+                "VALUES (?, ?, 'PENDING', 2) RETURNING id", Integer.class, foreignList, productId);
+
+        mvc.perform(as(get("/shopping-lists"), owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(ownList.toString()));
+        mvc.perform(as(get("/shopping-lists").param("status", "OPEN"), outsider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(as(get("/shopping-lists").param("groupId", otherGroupId.toString()), owner))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/shopping-lists/" + foreignList + "/items"), owner)).andExpect(status().isForbidden());
+        mvc.perform(as(post("/shopping-lists/" + foreignList + "/items"), owner)
+                .contentType("application/json").content("{\"productId\":" + productId + ",\"quantity\":1}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(post("/shopping-lists/" + foreignList + "/items/batch"), owner)
+                .contentType("application/json").content("[{\"productId\":" + productId + ",\"quantity\":1}]"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(put("/shopping-lists/" + ownList + "/items/" + foreignItem), owner)
+                .contentType("application/json").content("{\"quantity\":9}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(as(delete("/shopping-lists/" + foreignList + "/items/" + foreignItem), owner))
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT quantity FROM shopping_list_products WHERE id=?", Integer.class, foreignItem))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void discardCannotReadOrChangeAnotherGroupsStock() throws Exception {
+        int discardId = jdbc.queryForObject("INSERT INTO \"discard\"(stock_product_id,quantity) VALUES (?, 1) RETURNING id",
+                Integer.class, itemId);
+        mvc.perform(as(get("/discard").param("groupId", groupId.toString()), outsider))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/discard").param("groupId", otherGroupId.toString()), outsider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(as(get("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(post("/discard"), outsider).contentType("application/json")
+                .content("{\"stockProductId\":" + itemId + ",\"quantity\":2}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discardId), outsider)).andExpect(status().isForbidden());
+        assertThat(balance()).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"discard\" WHERE id=?", Integer.class, discardId))
+                .isEqualTo(1);
+        mvc.perform(as(get("/discard/" + discardId), admin)).andExpect(status().isOk());
     }
 
     @Test
@@ -275,15 +413,30 @@ class ApiIntegrationTest {
 
     @Test
     void createsUpdatesAndDeletesStockProductAndRejectsDuplicateBatch() throws Exception {
+        JsonNode legacyItem = body(as(get("/stock-products/" + itemId), owner), 200);
+        assertThat(legacyItem.get("purchaseUnitPrice").isNull()).isTrue();
+        assertThat(legacyItem.get("product").get("name").asString()).isEqualTo("Milk");
+
         String payload = "{\"stockId\":" + stockId + ",\"productId\":" + productId +
-                ",\"quantity\":2,\"minimalQuantity\":0,\"expireDate\":\"2099-02-01\"}";
-        int id = body(as(post("/stock-products"), owner).contentType("application/json").content(payload), 201).get("id").asInt();
+                ",\"quantity\":2,\"minimalQuantity\":0,\"purchaseUnitPrice\":7.90,\"expireDate\":\"2099-02-01\"}";
+        JsonNode created = body(as(post("/stock-products"), owner).contentType("application/json").content(payload), 201);
+        int id = created.get("id").asInt();
+        assertThat(created.get("purchaseUnitPrice").decimalValue()).isEqualByComparingTo("7.90");
+        assertThat(created.get("product").get("name").asString()).isEqualTo("Milk");
+        assertThat(created.get("product").get("unitPrice").decimalValue()).isEqualByComparingTo("8.50");
+        assertThat(created.get("product").get("brand").asString()).isEqualTo("Dairy Co");
         mvc.perform(as(post("/stock-products"), owner).contentType("application/json").content(payload)).andExpect(status().isConflict());
         mvc.perform(as(put("/stock-products/" + id), owner).contentType("application/json")
-                        .content("{\"minimalQuantity\":1,\"expireDate\":\"2099-03-01\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.quantity").value(2)).andExpect(jsonPath("$.productStatus").value("FRESH"));
+                        .content("{\"minimalQuantity\":1,\"purchaseUnitPrice\":7.50,\"expireDate\":\"2099-03-01\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.quantity").value(2))
+                .andExpect(jsonPath("$.purchaseUnitPrice").value(7.50))
+                .andExpect(jsonPath("$.productStatus").value("FRESH"));
+        mvc.perform(as(get("/stock-products/" + id), owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.product.id").value(productId))
+                .andExpect(jsonPath("$.product.imageUrl").value("https://cdn.example.test/milk.png"));
         mvc.perform(as(get("/stock-products").param("stockId", String.valueOf(stockId)).param("size", "1"), owner))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].product.name").value("Milk"));
         mvc.perform(as(delete("/stock-products/" + id), outsider)).andExpect(status().isForbidden());
         mvc.perform(as(delete("/stock-products/" + id), owner)).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_products WHERE deleted_at IS NULL", Integer.class)).isEqualTo(1);
@@ -338,6 +491,76 @@ class ApiIntegrationTest {
                         .contentType("application/json").content(movement("IN", 3))).andExpect(status().isForbidden());
         assertThat(balance()).isEqualTo(5);
         assertThat(count("stock_movements")).isZero();
+    }
+
+    @Test
+    void foodPurchaseIsIdempotentAndFifoRepricesConsumedHistory() throws Exception {
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
+        String payload = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","lines":[
+                  {"stockId":%d,"productId":%d,"expireDate":"2099-01-01","quantity":2,"unitPrice":4.00}]}
+                """.formatted(today, stockId, productId);
+        String path = "/groups/" + groupId + "/food-purchases";
+        JsonNode purchase = body(as(post(path), owner).header("Idempotency-Key", "milk-receipt")
+                .contentType("application/json").content(payload), 201);
+        JsonNode retry = body(as(post(path), owner).header("Idempotency-Key", "milk-receipt")
+                .contentType("application/json").content(payload), 201);
+        assertThat(retry.get("id")).isEqualTo(purchase.get("id"));
+        assertThat(balance()).isEqualTo(7);
+        assertThat(count("food_purchases")).isEqualTo(1);
+        mvc.perform(as(post(path), outsider).header("Idempotency-Key", "other")
+                .contentType("application/json").content(payload)).andExpect(status().isForbidden());
+
+        body(as(post("/stock-products/" + itemId + "/movements"), owner).contentType("application/json")
+                .content("{\"movementType\":\"OUT\",\"quantity\":6,\"reasonCode\":\"CONSUMED\"}"), 201);
+        body(as(post("/stock-products/" + itemId + "/movements"), owner).contentType("application/json")
+                .content("{\"movementType\":\"OUT\",\"quantity\":1,\"reasonCode\":\"CONSUMED\"}"), 201);
+        assertThat(balance()).isZero();
+        String query = "/groups/" + groupId + "/money-saving/summary?from=" + today + "&to=" + today.plusDays(1);
+        JsonNode before = body(as(get(query), owner), 200);
+        assertThat(before.get("spending").get("amount").asDouble()).isEqualTo(8.0);
+        assertThat(before.get("saving").get("amount").asDouble()).isEqualTo(4.0);
+        assertThat(before.get("saving").get("actions").asInt()).isEqualTo(2);
+        JsonNode events = body(as(get("/groups/" + groupId + "/money-saving/events?from=" + today +
+                "&to=" + today.plusDays(1) + "&kind=CONSUMED&page=0&size=1"), owner), 200);
+        assertThat(events.get("totalElements").asInt()).isEqualTo(2);
+        assertThat(events.get("content").size()).isEqualTo(1);
+
+        long lineId = purchase.get("lines").get(0).get("id").asLong();
+        String update = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","version":1,"lines":[
+                  {"id":%d,"quantity":2,"unitPrice":5.00}]}
+                """.formatted(today, lineId);
+        body(as(put(path + "/" + purchase.get("id").asString()), owner)
+                .contentType("application/json").content(update), 200);
+        JsonNode after = body(as(get(query), owner), 200);
+        assertThat(after.get("spending").get("amount").asDouble()).isEqualTo(10.0);
+        assertThat(after.get("saving").get("amount").asDouble()).isEqualTo(5.0);
+        assertThat(count("food_purchase_revisions")).isEqualTo(1);
+        mvc.perform(as(delete(path + "/" + purchase.get("id").asString()), owner)).andExpect(status().isConflict());
+    }
+
+    @Test
+    void expiredDiscardIsScopedAndCanBeReversed() throws Exception {
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
+        String purchasePayload = """
+                {"purchaseDate":"%s","source":"USER_CONFIRMED","lines":[
+                  {"stockId":%d,"productId":%d,"expireDate":"%s","quantity":2,"unitPrice":3.00}]}
+                """.formatted(today.minusDays(2), stockId, productId, today.minusDays(1));
+        JsonNode purchase = body(as(post("/groups/" + groupId + "/food-purchases"), owner)
+                .header("Idempotency-Key", "expired-lot").contentType("application/json").content(purchasePayload), 201);
+        int expiredItemId = purchase.get("lines").get(0).get("stockProductId").asInt();
+        JsonNode discard = body(as(post("/discard"), owner).contentType("application/json")
+                .content("{\"stockProductId\":" + expiredItemId + ",\"quantity\":1,\"reasonCode\":\"EXPIRED\"}"), 201);
+        String query = "/groups/" + groupId + "/money-saving/summary?from=" + today + "&to=" + today.plusDays(1);
+        JsonNode summary = body(as(get(query), owner), 200);
+        assertThat(summary.get("loss").get("amount").asDouble()).isEqualTo(3.0);
+        assertThat(summary.get("loss").get("actions").asInt()).isEqualTo(1);
+        mvc.perform(as(get("/discard/" + discard.get("id").asInt()), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discard.get("id").asInt()), outsider)).andExpect(status().isForbidden());
+        mvc.perform(as(delete("/discard/" + discard.get("id").asInt()), owner)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT quantity FROM stock_products WHERE id=?", Integer.class, expiredItemId)).isEqualTo(2);
+        assertThat(body(as(get(query), owner), 200).get("loss").get("amount").asDouble()).isZero();
     }
 
     @Test
@@ -431,6 +654,31 @@ class ApiIntegrationTest {
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThat(count("stock_products")).isEqualTo(1);
         assertThat(count("products")).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsInvalidProductImageAndPurchasePrice() throws Exception {
+        String invalidImage = productBody("Bread").replace("}", ",\"imageUrl\":\"ftp://example.test/image.png\"}");
+        mvc.perform(as(post("/products"), admin).contentType("application/json").content(invalidImage))
+                .andExpect(status().isBadRequest());
+        mvc.perform(as(post("/stock-products"), owner).contentType("application/json")
+                        .content("{\"stockId\":" + stockId + ",\"productId\":" + productId
+                                + ",\"quantity\":1,\"purchaseUnitPrice\":0,\"expireDate\":\"2099-04-01\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(count("products")).isEqualTo(1);
+        assertThat(count("stock_products")).isEqualTo(1);
+    }
+
+    @Test
+    void stockContractMigrationIsIdempotentAndPreservesRows() throws Exception {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var migration = POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", POSTGRES.getDatabaseName(),
+                    "-v", "ON_ERROR_STOP=1", "-f", "/test/004_expand_stock_product_contract.sql");
+            assertThat(migration.getExitCode()).as(migration.getStderr()).isZero();
+        }
+        assertThat(count("products")).isEqualTo(1);
+        assertThat(count("stock_products")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT brand FROM products WHERE id=?", String.class, productId)).isEqualTo("Dairy Co");
     }
 
     @Test

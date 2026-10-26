@@ -21,7 +21,10 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
                 .storagePlace(product.getStoragePlace())
                 .unitPrice(product.getUnitPrice())
                 .unitOfMeasure(product.getUnitOfMeasure())
+                .brand(product.getBrand())
+                .imageUrl(product.getImageUrl())
                 .createdAt(product.getCreatedAt())
+                .ownerGroupId(product.getOwnerGroupId())
                 .build();
     }
 
@@ -37,6 +40,17 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
                 .storagePlace(dto.getStoragePlace())
                 .unitPrice(dto.getUnitPrice())
                 .unitOfMeasure(dto.getUnitOfMeasure())
+                .brand(normalizeOptional(dto.getBrand()))
+                .imageUrl(normalizeOptional(dto.getImageUrl()))
+                .ownerGroupId(dto.getOwnerGroupId())
                 .build();
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

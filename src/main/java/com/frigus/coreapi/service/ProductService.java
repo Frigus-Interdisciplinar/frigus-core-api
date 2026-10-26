@@ -8,13 +8,23 @@ import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.ProductMapper;
 import com.frigus.coreapi.model.Product;
 import com.frigus.coreapi.repository.ProductRepository;
+import com.frigus.coreapi.repository.GroupRepository;
+import com.frigus.coreapi.model.Group;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
 
+import com.frigus.coreapi.service.GroupAccessService;
+import com.frigus.coreapi.exception.ForbiddenException;
+import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.model.User;
+import java.util.UUID;
+
 @Service
+
 public class ProductService extends BaseService<
         Product,
         Integer,
@@ -23,31 +33,96 @@ public class ProductService extends BaseService<
         ProductMapper,
         ProductRepository> {
 
+    private final GroupAccessService groupAccessService;
+    private final GroupRepository groupRepository;
+
     public ProductService(
             ProductRepository repository,
             ProductMapper mapper) {
+        this(repository, mapper, null, null);
+    }
+
+    public ProductService(ProductRepository repository, ProductMapper mapper, GroupAccessService groupAccessService) {
+        this(repository, mapper, groupAccessService, null);
+    }
+
+    @Autowired
+    public ProductService(ProductRepository repository, ProductMapper mapper,
+                          GroupAccessService groupAccessService, GroupRepository groupRepository) {
         super(repository, mapper);
+        this.groupAccessService = groupAccessService;
+        this.groupRepository = groupRepository;
     }
 
     @Transactional
     public ProductResponseDto create(ProductCreateRequestDto dto) {
         Product product = mapper.toEntity(dto);
-        ensureUniqueName(product.getName(), null);
+        if (dto.getOwnerGroupId() != null) {
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(dto.getOwnerGroupId());
+            }
+            product.setOwnerGroupId(dto.getOwnerGroupId());
+            if (groupRepository != null) {
+                Group ownerGroup = groupRepository.findById(dto.getOwnerGroupId())
+                        .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "O grupo informado não existe"));
+                product.setOwnerGroup(ownerGroup);
+            }
+            ensureUniqueNameForGroup(product.getName(), dto.getOwnerGroupId(), null);
+        } else {
+            if (groupAccessService != null) {
+                User user = groupAccessService.requireCurrentUser();
+                if (user.getRole() != Role.ADMIN) {
+                    throw new ForbiddenException(
+                            "Apenas administradores podem criar produtos globais",
+                            "Informe o ownerGroupId do seu grupo");
+                }
+            }
+            ensureUniqueGlobalName(product.getName(), null);
+        }
 
         product.setCreatedAt(Instant.now());
         return mapper.toDto(repository.save(product));
     }
 
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<ProductResponseDto> findAllForGroup(UUID groupId, org.springframework.data.domain.Pageable pageable) {
+        if (groupId != null) {
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(groupId);
+            }
+            return repository.findAllGlobalOrByGroupId(groupId, pageable).map(mapper::toDto);
+        }
+        return repository.findAll(pageable).map(mapper::toDto);
+    }
+
+    private void ensureUniqueNameForGroup(String name, UUID groupId, Integer currentProductId) {
+        Optional<Product> duplicate = repository.findFirstByNameIgnoreCaseAndOwnerGroupId(name, groupId);
+        if (duplicate.isPresent() && !duplicate.get().getId().equals(currentProductId)) {
+            throw new ConflictException(
+                    "Nome de produto já cadastrado",
+                    "Já existe um produto com este nome cadastrado para o seu grupo");
+        }
+    }
+
     @Transactional
     public ProductResponseDto update(Integer id, ProductUpdateRequestDto dto) {
-        Product product = getRequiredEntity(id);
-        ensureUniqueName(dto.getName().trim(), product.getId());
+        Product product = repository.findById(id).orElseThrow(NotFoundException::new);
+        if (product.getOwnerGroup() == null) {
+            ensureUniqueGlobalName(dto.getName().trim(), product.getId());
+        } else {
+            ensureUniqueNameForGroup(dto.getName().trim(), product.getOwnerGroup().getId(), product.getId());
+        }
         product.setName(dto.getName().trim());
-        product.setBrand(dto.getBrand());product.setImageUrl(dto.getImageUrl());
         product.setCategory(dto.getCategory());
         product.setStoragePlace(dto.getStoragePlace());
         product.setUnitPrice(dto.getUnitPrice());
         product.setUnitOfMeasure(dto.getUnitOfMeasure());
+        if (dto.getBrand() != null) {
+            product.setBrand(normalizeOptional(dto.getBrand()));
+        }
+        if (dto.getImageUrl() != null) {
+            product.setImageUrl(normalizeOptional(dto.getImageUrl()));
+        }
 
         return mapper.toDto(repository.save(product));
     }
@@ -55,7 +130,7 @@ public class ProductService extends BaseService<
     @Override
     @Transactional
     public void delete(Integer id) {
-        Product product = getRequiredEntity(id);
+        Product product = repository.findById(id).orElseThrow(NotFoundException::new);
 
         if (repository.isReferenced(product.getId())) {
             throw new ConflictException(
@@ -66,9 +141,8 @@ public class ProductService extends BaseService<
         repository.delete(product);
     }
 
-    private void ensureUniqueName(String name, Integer currentProductId) {
+    private void ensureUniqueGlobalName(String name, Integer currentProductId) {
         Optional<Product> duplicate = repository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull(name);
-
         if (duplicate.isPresent() && !duplicate.get().getId().equals(currentProductId)) {
             throw new ConflictException(
                     "Nome de produto já cadastrado",
@@ -76,14 +150,24 @@ public class ProductService extends BaseService<
         }
     }
 
-
-    @Override @Transactional(readOnly=true)
+    @Override
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<ProductResponseDto> findAll(org.springframework.data.domain.Pageable pageable) {
         return repository.findByOwnerGroupIsNull(pageable).map(mapper::toDto);
     }
-    @Override protected Product getRequiredEntity(Integer id) {
-        Product product=super.getRequiredEntity(id);
-        if(product.getOwnerGroup()!=null) throw new NotFoundException("Produto não encontrado","Consulte o catálogo do grupo");
+
+    @Override
+    protected Product getRequiredEntity(Integer id) {
+        Product product = super.getRequiredEntity(id);
+        if (product.getOwnerGroup() != null) {
+            throw new NotFoundException("Produto não encontrado", "Consulte o catálogo do grupo");
+        }
         return product;
     }
+
+    private String normalizeOptional(String value) {
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
 }

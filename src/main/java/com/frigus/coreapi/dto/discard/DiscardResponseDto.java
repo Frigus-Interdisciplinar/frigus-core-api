@@ -18,7 +18,8 @@ public class DiscardResponseDto {
     private Integer id;
     private Integer stockProductId;
     private String reason;
+    private String reasonCode;
+    private Instant canceledAt;
     private Instant date;
     private Integer quantity;
-    private Integer movementId;
 }

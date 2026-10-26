@@ -12,4 +12,5 @@ public class GroupCreateRequestDto {
     @NotBlank(message = "O nome do grupo é obrigatório")
     private String name;
     private String bannerPicture;
+    private String timeZone;
 }

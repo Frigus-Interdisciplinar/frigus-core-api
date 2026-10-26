@@ -32,6 +32,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.DateTimeException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -118,6 +120,7 @@ public class GroupService {
                 .owner(currentUser)
                 .name(dto.getName().trim())
                 .bannerPicture(dto.getBannerPicture())
+                .timeZone(validTimeZone(dto.getTimeZone()))
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
@@ -174,6 +177,9 @@ public class GroupService {
         if (dto.getBannerPicture() != null) {
             group.setBannerPicture(dto.getBannerPicture());
         }
+        if (dto.getTimeZone() != null) {
+            group.setTimeZone(validTimeZone(dto.getTimeZone()));
+        }
 
         group.setUpdatedAt(Instant.now());
         group = groupRepository.save(group);
@@ -182,6 +188,17 @@ public class GroupService {
         UUID defaultConvId = conversationRepository.findByGroupId(groupId)
                 .stream().findFirst().map(Conversation::getId).orElse(null);
         return groupMapper.toDtoWithMembers(group, members, defaultConvId);
+    }
+
+    private String validTimeZone(String value) {
+        if (value == null) return "America/Sao_Paulo";
+        try {
+            ZoneId zone = ZoneId.of(value);
+            if (!ZoneId.getAvailableZoneIds().contains(zone.getId())) throw new DateTimeException("Region required");
+            return zone.getId();
+        } catch (DateTimeException exception) {
+            throw new BadRequestException("Fuso inválido", "Informe uma região IANA válida");
+        }
     }
 
     @Transactional

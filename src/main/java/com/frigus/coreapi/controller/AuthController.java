@@ -1,12 +1,13 @@
 package com.frigus.coreapi.controller;
 
-import com.frigus.coreapi.dto.user.LoginRequestDto;
-import com.frigus.coreapi.dto.user.LoginResponseDto;
-import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
-import com.frigus.coreapi.dto.user.UserResponseDto;
+import com.frigus.coreapi.dto.user.*;
 import com.frigus.coreapi.service.AuthService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -17,24 +18,107 @@ import java.util.Map;
 public class AuthController {
     private final AuthService authService;
 
+    @GetMapping("/csrf")
+    public Map<String, String> csrf(CsrfToken token) {
+        return Map.of("token", token.getToken());
+    }
+
     @PostMapping("/register")
     public UserResponseDto register(@Valid @RequestBody UserRegisterRequestDto body) {
         return authService.register(body);
     }
 
     @PostMapping("/login")
-    public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body) {
-        return authService.login(body);
+    public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body, HttpServletResponse response) {
+        LoginResponseDto loginResponseDto = authService.login(body);
+
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+
+        return loginResponseDto;
+    }
+
+    @PostMapping("/google")
+    public LoginResponseDto loginWithGoogle(
+            @Valid @RequestBody GoogleLoginRequestDto body,
+            HttpServletResponse response) {
+        LoginResponseDto loginResponseDto = authService.loginWithGoogle(body);
+
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+
+        return loginResponseDto;
     }
 
     @PostMapping("/refresh")
     public LoginResponseDto refresh(
-            @RequestBody(required = false) Map<String, String> body) {
-        return authService.refreshToken(body != null ? body.get("refreshToken") : null);
+            @CookieValue(name = "refreshToken", required = false) String refreshTokenFromCookie,
+            @RequestBody(required = false) Map<String, String> body,
+            HttpServletResponse response) {
+
+        String refreshToken = (refreshTokenFromCookie != null && !refreshTokenFromCookie.isBlank())
+                ? refreshTokenFromCookie
+                : (body != null ? body.get("refreshToken") : null);
+
+        LoginResponseDto loginResponseDto = authService.refreshToken(refreshToken);
+
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+
+        return loginResponseDto;
     }
 
     @PostMapping("/logout")
-    public void logout(@RequestBody(required = false) Map<String, String> body) {
-        authService.logout(body != null ? body.get("refreshToken") : null);
+    public void logout(
+            @CookieValue(name = "refreshToken", required = false) String refreshTokenFromCookie,
+            @RequestBody(required = false) Map<String, String> body,
+            HttpServletResponse response) {
+
+        String refreshToken = (refreshTokenFromCookie != null && !refreshTokenFromCookie.isBlank())
+                ? refreshTokenFromCookie
+                : (body != null ? body.get("refreshToken") : null);
+
+        authService.logout(refreshToken);
+
+        clearTokenCookies(response);
+    }
+
+    private void setTokenCookies(HttpServletResponse response, String accessToken, String refreshToken) {
+        ResponseCookie accessTokenCookie = ResponseCookie.from("accessToken", accessToken)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(15 * 60) // 15 minutos
+                .sameSite("None")
+                .build();
+
+        ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", refreshToken)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(30 * 24 * 60 * 60) // 30 dias
+                .sameSite("None")
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
+    }
+
+    private void clearTokenCookies(HttpServletResponse response) {
+        ResponseCookie accessTokenCookie = ResponseCookie.from("accessToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0)
+                .sameSite("None")
+                .build();
+
+        ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0)
+                .sameSite("None")
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
     }
 }

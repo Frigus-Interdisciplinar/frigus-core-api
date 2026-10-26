@@ -15,6 +15,60 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================
 -- DROP TABLES
 -- ============================================================
+DROP TABLE IF EXISTS transaction_events CASCADE;
+
+DROP TABLE IF EXISTS notifications CASCADE;
+
+DROP TABLE IF EXISTS transactions CASCADE;
+
+DROP TABLE IF EXISTS subscriptions CASCADE;
+
+DROP TABLE IF EXISTS plans CASCADE;
+
+DROP TABLE IF EXISTS requests CASCADE;
+
+DROP TABLE IF EXISTS message_reads CASCADE;
+
+DROP TABLE IF EXISTS message_attachments CASCADE;
+
+DROP TABLE IF EXISTS messages CASCADE;
+
+DROP TABLE IF EXISTS conversation_participants CASCADE;
+
+DROP TABLE IF EXISTS food_purchase_revisions CASCADE;
+DROP TABLE IF EXISTS money_allocations CASCADE;
+DROP TABLE IF EXISTS money_exits CASCADE;
+DROP TABLE IF EXISTS money_supplies CASCADE;
+DROP TABLE IF EXISTS food_purchase_lines CASCADE;
+DROP TABLE IF EXISTS food_purchases CASCADE;
+DROP TABLE IF EXISTS stock_movements CASCADE;
+
+DROP TABLE IF EXISTS shopping_list_products CASCADE;
+
+DROP TABLE IF EXISTS "discard" CASCADE;
+
+DROP TABLE IF EXISTS conversations CASCADE;
+
+DROP TABLE IF EXISTS shopping_lists CASCADE;
+
+DROP TABLE IF EXISTS recipe_suggestions CASCADE;
+
+DROP TABLE IF EXISTS recipe_ingredients CASCADE;
+
+DROP TABLE IF EXISTS stock_products CASCADE;
+
+DROP TABLE IF EXISTS user_groups CASCADE;
+
+DROP TABLE IF EXISTS products CASCADE;
+
+DROP TABLE IF EXISTS stocks CASCADE;
+
+DROP TABLE IF EXISTS users CASCADE;
+
+DROP TABLE IF EXISTS recipes CASCADE;
+
+DROP TABLE IF EXISTS groups CASCADE;
+
 -- ============================================================
 -- ENUMS
 -- ============================================================
@@ -104,7 +158,8 @@ CREATE TABLE users (
   account_type account_type_enum NOT NULL,
   role user_role_enum NOT NULL DEFAULT 'USER',
   email VARCHAR NOT NULL,
-  hash_password VARCHAR NOT NULL,
+  hash_password VARCHAR,
+  google_id VARCHAR UNIQUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
@@ -115,6 +170,7 @@ CREATE TABLE groups (
   owner_id UUID,
   name VARCHAR NOT NULL,
   banner_picture TEXT,
+  time_zone VARCHAR(80) NOT NULL DEFAULT 'America/Sao_Paulo',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
@@ -150,8 +206,12 @@ CREATE TABLE products (
   storage_place storage_place_enum NOT NULL,
   unit_price NUMERIC(10, 2) NOT NULL,
   unit_of_measure unit_of_measure_enum NOT NULL,
+  brand VARCHAR(120),
+  image_url VARCHAR(2048),
+  owner_group_id UUID,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_products_owner_group_id_groups FOREIGN KEY (owner_group_id) REFERENCES groups (id) ON DELETE CASCADE
 );
 
 CREATE TABLE user_groups (
@@ -188,6 +248,7 @@ CREATE TABLE stock_products (
   quantity INTEGER NOT NULL,
   initial_quantity INTEGER NOT NULL,
   minimal_quantity INTEGER,
+  purchase_unit_price NUMERIC(10, 2),
   expire_date DATE NOT NULL,
   product_status product_status_enum,
   category category_enum NOT NULL,
@@ -195,7 +256,7 @@ CREATE TABLE stock_products (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_stock_products_product_stock_expire UNIQUE (product_id, stock_id, expire_date),
   CONSTRAINT chk_stock_products_minimal_quantity CHECK (minimal_quantity IS NULL OR minimal_quantity >= 0),
-  CONSTRAINT chk_stock_products_initial_quantity CHECK (initial_quantity >= 0),
+  CONSTRAINT chk_stock_products_purchase_unit_price CHECK (purchase_unit_price IS NULL OR purchase_unit_price > 0),
   CONSTRAINT fk_stock_products_product_id_products FOREIGN KEY (product_id) REFERENCES products (id),
   CONSTRAINT fk_stock_products_stock_id_stocks FOREIGN KEY (stock_id) REFERENCES stocks (id) ON DELETE CASCADE
 );
@@ -263,7 +324,10 @@ CREATE TABLE conversations (
 CREATE TABLE "discard" (
   id SERIAL PRIMARY KEY,
   stock_product_id INTEGER NOT NULL,
+  quantity INTEGER,
   reason TEXT,
+  reason_code VARCHAR(24),
+  canceled_at TIMESTAMPTZ,
   date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_discard_stock_product_id_stock_products FOREIGN KEY (stock_product_id) REFERENCES stock_products (id) ON DELETE CASCADE
@@ -287,10 +351,96 @@ CREATE TABLE stock_movements (
   stock_product_id INTEGER NOT NULL,
   user_id UUID NOT NULL,
   movement_type movement_type_enum NOT NULL,
+  reason_code VARCHAR(24),
   quantity INTEGER NOT NULL,
   date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_stock_movements_stock_product_id_stock_products FOREIGN KEY (stock_product_id) REFERENCES stock_products (id) ON DELETE CASCADE,
   CONSTRAINT fk_stock_movements_user_id_users FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE food_purchases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES groups(id),
+  purchase_date DATE NOT NULL,
+  source VARCHAR(24) NOT NULL CHECK (source IN ('USER_CONFIRMED', 'RECEIPT_CAPTURED')),
+  receipt_reference VARCHAR(160),
+  idempotency_key VARCHAR(160) NOT NULL,
+  request_hash VARCHAR(64) NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
+  UNIQUE (group_id, idempotency_key)
+);
+CREATE UNIQUE INDEX uq_food_purchases_receipt ON food_purchases(group_id, receipt_reference)
+  WHERE receipt_reference IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE food_purchase_lines (
+  id BIGSERIAL PRIMARY KEY,
+  purchase_id UUID NOT NULL REFERENCES food_purchases(id),
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  category VARCHAR(24) NOT NULL,
+  category_group VARCHAR(24) NOT NULL,
+  unit_of_measure VARCHAR(24) NOT NULL,
+  expire_date DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price > 0)
+);
+CREATE INDEX idx_food_purchase_lines_purchase ON food_purchase_lines(purchase_id);
+
+CREATE TABLE money_supplies (
+  id BIGSERIAL PRIMARY KEY,
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  purchase_line_id BIGINT UNIQUE REFERENCES food_purchase_lines(id),
+  available_on DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unknown_cost BOOLEAN NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_money_supplies_stock ON money_supplies(stock_key, available_on, id);
+
+CREATE TABLE money_exits (
+  id BIGSERIAL PRIMARY KEY,
+  group_id UUID NOT NULL REFERENCES groups(id),
+  stock_key INTEGER NOT NULL,
+  stock_product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  category VARCHAR(24) NOT NULL,
+  unit_of_measure VARCHAR(24) NOT NULL,
+  expire_date DATE NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  local_date DATE NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  kind VARCHAR(24) NOT NULL CHECK (kind IN ('CONSUMED','DISCARDED','OTHER')),
+  reason_code VARCHAR(24),
+  movement_id INTEGER REFERENCES stock_movements(id) ON DELETE SET NULL,
+  discard_id INTEGER,
+  canceled_at TIMESTAMPTZ
+);
+CREATE INDEX idx_money_exits_group_date ON money_exits(group_id, local_date DESC, id DESC);
+CREATE INDEX idx_money_exits_stock ON money_exits(stock_key, occurred_at, id);
+
+CREATE TABLE money_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  exit_id BIGINT NOT NULL REFERENCES money_exits(id) ON DELETE CASCADE,
+  supply_id BIGINT REFERENCES money_supplies(id) ON DELETE SET NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  amount NUMERIC(20,2),
+  category_group VARCHAR(24)
+);
+CREATE INDEX idx_money_allocations_exit ON money_allocations(exit_id);
+
+CREATE TABLE food_purchase_revisions (
+  id BIGSERIAL PRIMARY KEY,
+  purchase_id UUID NOT NULL REFERENCES food_purchases(id),
+  previous_version INTEGER NOT NULL,
+  previous_state JSONB NOT NULL,
+  changed_by UUID NOT NULL REFERENCES users(id),
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE conversation_participants (
@@ -720,39 +870,6 @@ CREATE TRIGGER trg_stock_products_set_status
     FOR EACH ROW
     EXECUTE FUNCTION trg_fn_stock_products_set_status();
 
-CREATE OR REPLACE FUNCTION trg_fn_stock_movements_apply()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_delta        INTEGER;
-    v_new_quantity INTEGER;
-BEGIN
-    v_delta := CASE NEW.movement_type
-        WHEN 'IN'  THEN NEW.quantity
-        WHEN 'OUT' THEN -NEW.quantity
-        ELSE NEW.quantity
-    END;
-
-    UPDATE stock_products
-       SET quantity = quantity + v_delta
-     WHERE id = NEW.stock_product_id
-     RETURNING quantity INTO v_new_quantity;
-
-    IF v_new_quantity < 0 THEN
-        RAISE EXCEPTION 'stock_movements: quantidade resultante negativa para stock_product_id %', NEW.stock_product_id;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_stock_movements_apply ON stock_movements;
-CREATE TRIGGER trg_stock_movements_apply
-    AFTER INSERT ON stock_movements
-    FOR EACH ROW
-    EXECUTE FUNCTION trg_fn_stock_movements_apply();
-
 -- Commercial inventory alerts are generated by PostgreSQL in the same
 -- transaction that changes a stock product. This keeps the alert correct
 -- even when stock is changed outside the API.
@@ -1016,7 +1133,6 @@ ALTER TABLE stock_movements ADD COLUMN observation VARCHAR(2000);
 ALTER TABLE stock_movements ADD COLUMN balance_after INTEGER;
 ALTER TABLE stock_movements ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'INVENTORY'
  CHECK (purpose IN ('INVENTORY','CONSUMPTION','DISCARD'));
-ALTER TABLE "discard" ADD COLUMN quantity INTEGER CHECK (quantity > 0);
 -- Historical discarded quantities cannot be inferred reliably and remain NULL.
 ALTER TABLE "discard" ADD COLUMN movement_id INTEGER UNIQUE REFERENCES stock_movements(id);
 ALTER TABLE stock_products ADD COLUMN deleted_at TIMESTAMP;
@@ -1025,9 +1141,6 @@ ALTER TABLE stock_products DROP CONSTRAINT uq_stock_products_product_stock_expir
 CREATE UNIQUE INDEX uq_stock_products_active_product_stock_expire_batch
  ON stock_products(product_id, stock_id, expire_date, COALESCE(batch,'')) WHERE deleted_at IS NULL;
 ALTER TABLE stock_products ADD CONSTRAINT chk_stock_products_quantity CHECK(quantity >= 0) NOT VALID;
-ALTER TABLE products ADD COLUMN owner_group_id UUID REFERENCES groups(id) ON DELETE RESTRICT;
-ALTER TABLE products ADD COLUMN image_url TEXT;
-ALTER TABLE products ADD COLUMN brand VARCHAR(120);
 DROP INDEX uq_products_name_ci;
 CREATE UNIQUE INDEX uq_products_global_name ON products(LOWER(name)) WHERE owner_group_id IS NULL;
 CREATE UNIQUE INDEX uq_products_group_name ON products(owner_group_id, LOWER(name)) WHERE owner_group_id IS NOT NULL;

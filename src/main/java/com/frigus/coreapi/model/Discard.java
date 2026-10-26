@@ -30,13 +30,19 @@ public class Discard {
 
     @Column(name = "reason", length = Integer.MAX_VALUE)
     private String reason;
-    private Integer quantity;
     @OneToOne(fetch=FetchType.LAZY) @JoinColumn(name="movement_id") private StockMovement movement;
+
+    @Column(name = "reason_code", length = 24)
+    private String reasonCode;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "date", nullable = false)
     private Instant date;
 
+    @Column(name = "quantity", updatable = false)
+    private Integer quantity;
 
+    @Column(name = "canceled_at")
+    private Instant canceledAt;
 }

@@ -109,16 +109,16 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
         Stock stock = getRequiredStock(dto.getStockId());
         groupAccessService.requireGroupWriteAccess(stock.getGroup().getId());
         Product product = productRepository.findById(dto.getProductId())
-                .orElseThrow(() -> new NotFoundException("Produto não encontrado", "O produto informado não existe"));
+                .orElseThrow(() -> new NotFoundException("Produto nÃ£o encontrado", "O produto informado nÃ£o existe"));
 
         if (repository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(product.getId(), stock.getId(), dto.getExpireDate(),dto.getBatch()==null || dto.getBatch().isBlank() ? null : dto.getBatch().trim())) {
             throw new ConflictException(
-                    "Produto já cadastrado neste estoque para a validade informada",
-                    "Já existe um item com este produto, estoque e validade");
+                    "Produto jÃ¡ cadastrado neste estoque para a validade informada",
+                    "JÃ¡ existe um item com este produto, estoque e validade");
         }
 
         if(product.getOwnerGroup()!=null && !product.getOwnerGroup().getId().equals(stock.getGroup().getId()))
-            throw new com.frigus.coreapi.exception.ForbiddenException("Produto de outro grupo","Produto indisponível");
+            throw new com.frigus.coreapi.exception.ForbiddenException("Produto de outro grupo","Produto indisponÃ­vel");
         StockProduct stockProduct = mapper.toEntity(dto);
         stockProduct.setProduct(product);
         stockProduct.setStock(stock);
@@ -134,7 +134,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
         authorizeRead(stockProduct);
         groupAccessService.requireGroupWriteAccess(stockProduct.getStock().getGroup().getId());
         if (dto.isEmpty()) {
-            throw new BadRequestException("Atualização vazia", "Informe ao menos um campo para atualizar");
+            throw new BadRequestException("Atualizacao vazia", "Informe ao menos um campo para atualizar");
         }
 
         if (dto.getName() != null || dto.getCategory() != null || dto.getStoragePlace() != null) {
@@ -157,6 +157,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
 
         if (dto.getMinimalQuantity() != null) stockProduct.setMinimalQuantity(dto.getMinimalQuantity());
         if (dto.getInitialQuantity() != null) stockProduct.setInitialQuantity(dto.getInitialQuantity());
+        if (dto.getPurchaseUnitPrice() != null) stockProduct.setPurchaseUnitPrice(dto.getPurchaseUnitPrice());
         if (dto.getExpireDate() != null) stockProduct.setExpireDate(dto.getExpireDate());
         if (dto.getBatch() != null) stockProduct.setBatch(dto.getBatch().trim());
         stockProduct.setProductStatus(statusResolver.resolve(stockProduct.getExpireDate()));
@@ -166,7 +167,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             stockMovementService.create(id, com.frigus.coreapi.dto.stockmovement.StockMovementCreateRequestDto.builder()
                     .movementType(com.frigus.coreapi.enums.MovementType.ADJUSTMENT)
                     .quantity(dto.getQuantity())
-                    .observation("Ajuste de saldo na edição do alimento")
+                    .observation("Ajuste de saldo na edicao do alimento")
                     .build());
         }
         return mapToDto(repository.findById(id).orElseThrow(NotFoundException::new));
@@ -174,13 +175,13 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
 
     private Stock getRequiredStock(Integer stockId) {
         return stockRepository.findById(stockId).filter(stock -> stock.getDeletedAt()==null)
-                .orElseThrow(() -> new NotFoundException("Estoque não encontrado", "O estoque informado não existe"));
+                .orElseThrow(() -> new NotFoundException("Estoque nÃ£o encontrado", "O estoque informado nÃ£o existe"));
     }
 
     private Integer requiredIntegerFilter(MultiValueMap<String, String> filters, String name) {
         String rawValue = filters.getFirst(name);
         if (rawValue == null || rawValue.isBlank()) {
-            throw new BadRequestException("Filtro obrigatório ausente", "O filtro " + name + " é obrigatório");
+            throw new BadRequestException("Filtro obrigatÃ³rio ausente", "O filtro " + name + " Ã© obrigatÃ³rio");
         }
         try {
             Integer value = Integer.valueOf(rawValue);
@@ -189,7 +190,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             }
             return value;
         } catch (NumberFormatException exception) {
-            throw new BadRequestException("Filtro inválido", "O filtro " + name + " é inválido");
+            throw new BadRequestException("Filtro invÃ¡lido", "O filtro " + name + " Ã© invÃ¡lido");
         }
     }
 

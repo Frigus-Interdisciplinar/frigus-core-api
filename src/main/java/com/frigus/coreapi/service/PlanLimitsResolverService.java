@@ -4,6 +4,7 @@ import com.frigus.coreapi.enums.PlanCode;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.model.Plan;
+import com.frigus.coreapi.model.Subscription;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.utils.ServiceUtils;
@@ -20,7 +21,7 @@ import com.frigus.coreapi.dto.plan.PlanLimitsDto;
 @Service
 @RequiredArgsConstructor
 public class PlanLimitsResolverService {
-    
+
     private final UserRepository userRepository;
 
     public PlanLimitsDto resolveLimitsForCurrentUser() {
@@ -29,24 +30,34 @@ public class PlanLimitsResolverService {
             return getLimitsForPlan(PlanCode.FREE);
         }
 
-        return getLimitsForUser(user.getId());
+        Subscription subscription = user.getSubscription();
+        if (subscription == null || subscription.getPlan() == null) {
+            return getLimitsForPlan(PlanCode.FREE);
+        }
+
+        Plan plan = subscription.getPlan();
+        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode());
+        return getLimitsForPlan(planCode);
     }
 
     public PlanLimitsDto getLimitsForUser(UUID userId) {
         User user = userRepository.findByIdWithSubscriptionAndPlan(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário"));
 
-        if (user.getSubscription() == null || user.getSubscription().getPlan() == null) {
+        Subscription subscription = user.getSubscription();
+        if (subscription == null || subscription.getPlan() == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
 
-        Plan plan = user.getSubscription().getPlan();
-        return getLimitsForPlan(PlanCode.valueOf(plan.getPlanCode()));
+        Plan plan = subscription.getPlan();
+        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode());
+
+        return getLimitsForPlan(planCode);
     }
 
     public PlanLimitsDto getLimitsForPlan(PlanCode planCode) {
         // default for frigus free plan
-        int maxGroupsCreated = 0;
+        int maxGroupsCreated = 1;
         int maxGroupMembers = 3;
         int maxStocks = 1;
         int maxProductsPerStock = 20;
@@ -57,13 +68,11 @@ public class PlanLimitsResolverService {
         BigDecimal costPerPublishedAd = BigDecimal.ZERO;
         boolean hasMonthlyReport = false;
 
-        switch (planCode) {
-            case FREE:
-                // Every account needs a private group to store its own inventory.
+        switch (planCode.name()) {
+            case "FREE":
                 maxGroupsCreated = 1;
-                allowOwnProducts = true;
                 break;
-            case PLUS:
+            case "PLUS":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 5;
                 maxStocks = 3;
@@ -72,7 +81,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case FAMILY:
+            case "FAMILY":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 10;
                 maxStocks = 5;
@@ -81,8 +90,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case COMMERCIAL:
-                hasMonthlyReport = true;
+            case "COMMERCIAL":
                 maxGroupsCreated = 1;
                 maxGroupMembers = 20;
                 maxStocks = 10;
@@ -91,7 +99,7 @@ public class PlanLimitsResolverService {
                 allowSavedRecipes = true;
                 allowMoneySaving = true;
                 break;
-            case ENTERPRISE:
+            case "ENTERPRISE":
                 maxGroupsCreated = 1;
                 maxGroupMembers = Integer.MAX_VALUE;
                 maxStocks = Integer.MAX_VALUE;

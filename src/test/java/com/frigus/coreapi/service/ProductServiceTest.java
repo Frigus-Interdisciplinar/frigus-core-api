@@ -76,12 +76,16 @@ class ProductServiceTest {
     @Test
     void updatesCatalogProduct() {
         Product current = product(3);
+        current.setBrand("Marca antiga");
+        current.setImageUrl("https://cdn.example.test/old.png");
         ProductUpdateRequestDto update = ProductUpdateRequestDto.builder()
                 .name("  Iogurte  ")
                 .category(Category.DAIRY)
                 .storagePlace(StoragePlace.FRIDGE)
                 .unitPrice(new BigDecimal("12.30"))
                 .unitOfMeasure(UnitOfMeasure.UNIT)
+                .brand("  Marca nova  ")
+                .imageUrl("   ")
                 .build();
         ProductService service = service();
         when(productRepository.findById(3)).thenReturn(Optional.of(current));
@@ -93,7 +97,26 @@ class ProductServiceTest {
         assertThat(response.getName()).isEqualTo("Iogurte");
         assertThat(response.getUnitPrice()).isEqualByComparingTo("12.30");
         assertThat(response.getUnitOfMeasure()).isEqualTo(UnitOfMeasure.UNIT);
+        assertThat(response.getBrand()).isEqualTo("Marca nova");
+        assertThat(response.getImageUrl()).isNull();
         verify(productRepository).save(current);
+    }
+
+    @Test
+    void preservesOptionalMetadataWhenUpdateOmitsIt() {
+        Product current = product(3);
+        current.setBrand("Marca");
+        current.setImageUrl("https://cdn.example.test/milk.png");
+        ProductService service = service();
+        when(productRepository.findById(3)).thenReturn(Optional.of(current));
+        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupIsNull("Leite")).thenReturn(Optional.of(current));
+        when(productRepository.save(current)).thenReturn(current);
+
+        ProductUpdateRequestDto update = updateRequest();
+        service.update(3, update);
+
+        assertThat(current.getBrand()).isEqualTo("Marca");
+        assertThat(current.getImageUrl()).isEqualTo("https://cdn.example.test/milk.png");
     }
 
     @Test
@@ -127,6 +150,32 @@ class ProductServiceTest {
         service.delete(3);
 
         verify(productRepository).delete(product);
+    }
+
+    @Test
+    void createsCustomProductForGroup() {
+        java.util.UUID groupId = java.util.UUID.randomUUID();
+        ProductService service = service();
+        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupId("Pao Caseiro", groupId)).thenReturn(Optional.empty());
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            Product product = invocation.getArgument(0);
+            product.setId(99);
+            return product;
+        });
+
+        ProductCreateRequestDto request = ProductCreateRequestDto.builder()
+                .name("Pao Caseiro")
+                .category(Category.GRAIN)
+                .storagePlace(StoragePlace.PANTRY)
+                .unitPrice(new BigDecimal("10.00"))
+                .unitOfMeasure(UnitOfMeasure.UNIT)
+                .ownerGroupId(groupId)
+                .build();
+
+        var response = service.create(request);
+
+        assertThat(response.getId()).isEqualTo(99);
+        assertThat(response.getOwnerGroupId()).isEqualTo(groupId);
     }
 
     private ProductService service() {

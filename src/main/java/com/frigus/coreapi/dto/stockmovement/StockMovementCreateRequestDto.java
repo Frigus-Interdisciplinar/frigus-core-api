@@ -22,4 +22,5 @@ public class StockMovementCreateRequestDto {
     @PositiveOrZero(message = "A quantidade não pode ser negativa")
     private Integer quantity;
     @jakarta.validation.constraints.Size(max=2000) private String observation;
+    private String reasonCode;
 }
