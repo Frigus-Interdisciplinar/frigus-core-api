@@ -778,7 +778,7 @@ class ApiIntegrationTest {
                 org.springframework.test.util.ReflectionTestUtils.getField(aiClient, "restClient");
         var builder = original.mutate().baseUrl("http://ai.example.test");
         var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/chats/existing/messages"))
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/v1/chats/existing/messages"))
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
         org.springframework.test.util.ReflectionTestUtils.setField(aiClient, "restClient", builder.build());
         try {
