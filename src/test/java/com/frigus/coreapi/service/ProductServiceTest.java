@@ -165,7 +165,7 @@ class ProductServiceTest {
 
         ProductCreateRequestDto request = ProductCreateRequestDto.builder()
                 .name("Pao Caseiro")
-                .category(Category.BAKERY)
+                .category(Category.GRAIN)
                 .storagePlace(StoragePlace.PANTRY)
                 .unitPrice(new BigDecimal("10.00"))
                 .unitOfMeasure(UnitOfMeasure.UNIT)
