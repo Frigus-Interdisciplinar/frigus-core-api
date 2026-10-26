@@ -43,6 +43,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class TransactionService {
 
     private final TransactionQueueProducer transactionQueueProducer;

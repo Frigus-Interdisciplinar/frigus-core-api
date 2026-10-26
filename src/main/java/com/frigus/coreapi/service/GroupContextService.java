@@ -11,6 +11,7 @@ public class GroupContextService {
  private final GroupAccessService access;
  private final GroupRepository groups;
  private final StockRepository stocks;
+ public User currentUser() { return access.requireCurrentUser(); }
  public Group resolveGroup(UUID groupId) {
   if(groupId==null) {
    var mine=groups.findGroupsByUserId(access.requireCurrentUser().getId());

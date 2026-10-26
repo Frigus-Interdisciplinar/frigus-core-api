@@ -46,6 +46,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class MessageService {
 
     private final MessageRepository messageRepository;

@@ -38,7 +38,7 @@ public class CommercialService {
   Map<String,BigDecimal> categories=new TreeMap<>();BigDecimal total=BigDecimal.ZERO,purchases=BigDecimal.ZERO;
   for(var expense:all){total=total.add(expense.getAmount());categories.merge(expense.getCategory(),expense.getAmount(),BigDecimal::add);if(expense.getShoppingList()!=null) purchases=purchases.add(expense.getAmount());}
   var zone=ZoneId.of(timeZone);
-  long count=lists.countCompleted(groupId,month.atDay(1).atStartOfDay(zone).toInstant(),month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant());
+  long count=lists.countCompleted(groupId,com.frigus.coreapi.enums.ListStatus.COMPLETED,month.atDay(1).atStartOfDay(zone).toInstant(),month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant());
   return new MonthlyReportDto(groupId,month.toString(),total,purchases,count,categories);
  }
  public String export(UUID groupId,YearMonth month){

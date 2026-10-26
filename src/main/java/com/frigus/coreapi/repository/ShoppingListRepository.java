@@ -11,7 +11,7 @@ public interface ShoppingListRepository extends BaseRepository<ShoppingList,UUID
  Page<ShoppingList> findByStockIdAndStatus(Integer stockId,com.frigus.coreapi.enums.ListStatus status,Pageable pageable);
  @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select l from ShoppingList l where l.id=:id")
  Optional<ShoppingList> lockById(@Param("id") UUID id);
- @Query("select count(l) from ShoppingList l where l.stock.group.id=:groupId and l.status=com.frigus.coreapi.enums.ListStatus.COMPLETED and l.completedAt>=:start and l.completedAt<:end")
- long countCompleted(@Param("groupId") UUID groupId,@Param("start") Instant start,@Param("end") Instant end);
+ @Query("select count(l) from ShoppingList l where l.stock.group.id=:groupId and l.status=:status and l.completedAt>=:start and l.completedAt<:end")
+ long countCompleted(@Param("groupId") UUID groupId,@Param("status") com.frigus.coreapi.enums.ListStatus status,@Param("start") Instant start,@Param("end") Instant end);
 
 }

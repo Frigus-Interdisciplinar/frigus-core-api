@@ -45,6 +45,6 @@ public interface ShoppingListProductRepository extends BaseRepository<ShoppingLi
             @Param("status") ProductListStatus status,
             @Param("listStatus") ListStatus listStatus,
             @Param("createdOnOrBefore") Instant createdOnOrBefore);
-    @Query("select count(i) from ShoppingListProduct i where i.list.stock.group.id=:groupId and i.list.stock.deletedAt is null and i.list.status=com.frigus.coreapi.enums.ListStatus.OPEN and i.status=com.frigus.coreapi.enums.ProductListStatus.PENDING")
+    @Query("select count(i) from ShoppingListProduct i where i.list.stock.group.id=:groupId and i.list.stock.deletedAt is null and str(i.list.status)='OPEN' and str(i.status)='PENDING'")
     long countPendingForGroup(@Param("groupId") UUID groupId);
 }
