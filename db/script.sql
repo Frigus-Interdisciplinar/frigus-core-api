@@ -224,8 +224,10 @@ CREATE TABLE products (
   unit_of_measure unit_of_measure_enum NOT NULL,
   brand VARCHAR(120),
   image_url VARCHAR(2048),
+  owner_group_id UUID,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_products_owner_group_id_groups FOREIGN KEY (owner_group_id) REFERENCES groups (id) ON DELETE CASCADE
 );
 
 CREATE TABLE user_groups (

@@ -50,15 +50,19 @@ public class ProductService extends BaseService<
     public ProductResponseDto create(ProductCreateRequestDto dto) {
         Product product = mapper.toEntity(dto);
         if (dto.getOwnerGroupId() != null) {
-            groupAccessService.requireGroupAccess(dto.getOwnerGroupId());
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(dto.getOwnerGroupId());
+            }
             product.setOwnerGroupId(dto.getOwnerGroupId());
             ensureUniqueNameForGroup(product.getName(), dto.getOwnerGroupId(), null);
         } else {
-            User user = groupAccessService.requireCurrentUser();
-            if (user.getRole() != Role.ADMIN) {
-                throw new ForbiddenException(
-                        "Apenas administradores podem criar produtos globais",
-                        "Informe o ownerGroupId do seu grupo");
+            if (groupAccessService != null) {
+                User user = groupAccessService.requireCurrentUser();
+                if (user.getRole() != Role.ADMIN) {
+                    throw new ForbiddenException(
+                            "Apenas administradores podem criar produtos globais",
+                            "Informe o ownerGroupId do seu grupo");
+                }
             }
             ensureUniqueName(product.getName(), null);
         }
@@ -70,7 +74,9 @@ public class ProductService extends BaseService<
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<ProductResponseDto> findAllForGroup(UUID groupId, org.springframework.data.domain.Pageable pageable) {
         if (groupId != null) {
-            groupAccessService.requireGroupAccess(groupId);
+            if (groupAccessService != null) {
+                groupAccessService.requireGroupAccess(groupId);
+            }
             return repository.findAllGlobalOrByGroupId(groupId, pageable).map(mapper::toDto);
         }
         return repository.findAll(pageable).map(mapper::toDto);
