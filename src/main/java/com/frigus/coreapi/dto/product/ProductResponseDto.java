@@ -27,5 +27,4 @@ public class ProductResponseDto {
     private String brand;
     private String imageUrl;
     private Instant createdAt;
-    private java.util.UUID ownerGroupId;
 }

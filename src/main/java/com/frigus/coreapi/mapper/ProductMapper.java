@@ -23,7 +23,6 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
                 .brand(product.getBrand())
                 .imageUrl(product.getImageUrl())
                 .createdAt(product.getCreatedAt())
-                .ownerGroupId(product.getOwnerGroupId())
                 .build();
     }
 
@@ -41,7 +40,6 @@ public class ProductMapper implements BaseMapper<Product, ProductResponseDto, Pr
                 .unitOfMeasure(dto.getUnitOfMeasure())
                 .brand(normalizeOptional(dto.getBrand()))
                 .imageUrl(normalizeOptional(dto.getImageUrl()))
-                .ownerGroupId(dto.getOwnerGroupId())
                 .build();
     }
 

@@ -61,8 +61,5 @@ public class Product {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "owner_group_id")
-    private java.util.UUID ownerGroupId;
-
 
 }

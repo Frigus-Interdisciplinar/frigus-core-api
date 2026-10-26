@@ -47,6 +47,4 @@ public class ProductCreateRequestDto {
     @Size(max = 2048, message = "A URL da imagem deve ter no máximo 2048 caracteres")
     @Pattern(regexp = "(?i)^(?:\\s*|\\s*https?://\\S+\\s*)$", message = "A URL da imagem deve ser HTTP ou HTTPS")
     private String imageUrl;
-
-    private java.util.UUID ownerGroupId;
 }

@@ -152,32 +152,6 @@ class ProductServiceTest {
         verify(productRepository).delete(product);
     }
 
-    @Test
-    void createsCustomProductForGroup() {
-        java.util.UUID groupId = java.util.UUID.randomUUID();
-        ProductService service = service();
-        when(productRepository.findFirstByNameIgnoreCaseAndOwnerGroupId("Pao Caseiro", groupId)).thenReturn(Optional.empty());
-        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
-            Product product = invocation.getArgument(0);
-            product.setId(99);
-            return product;
-        });
-
-        ProductCreateRequestDto request = ProductCreateRequestDto.builder()
-                .name("Pao Caseiro")
-                .category(Category.GRAIN)
-                .storagePlace(StoragePlace.PANTRY)
-                .unitPrice(new BigDecimal("10.00"))
-                .unitOfMeasure(UnitOfMeasure.UNIT)
-                .ownerGroupId(groupId)
-                .build();
-
-        var response = service.create(request);
-
-        assertThat(response.getId()).isEqualTo(99);
-        assertThat(response.getOwnerGroupId()).isEqualTo(groupId);
-    }
-
     private ProductService service() {
         return new ProductService(productRepository, new ProductMapper());
     }
