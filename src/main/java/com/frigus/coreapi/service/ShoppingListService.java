@@ -4,6 +4,8 @@ import com.frigus.coreapi.dto.shoppinglist.ShoppingListCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListUpdateRequestDto;
+import com.frigus.coreapi.dto.product.ProductResponseDto;
+import com.frigus.coreapi.dto.shopping.ShoppingSuggestionDto;
 import com.frigus.coreapi.enums.ListStatus;
 import com.frigus.coreapi.enums.ProductListStatus;
 import com.frigus.coreapi.enums.Role;
@@ -137,6 +139,31 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
             dto.setPurchasedItems(shoppingListProductRepository.countByListIdAndStatus(list.getId(), ProductListStatus.PURCHASED));
             return dto;
         });
+    }
+
+    @Transactional(readOnly = true)
+    public List<ShoppingSuggestionDto> suggestions(Integer stockId) {
+        Stock stock = stockRepository.findById(stockId)
+                .orElseThrow(() -> new NotFoundException());
+        groupAccessService.requireGroupAccess(stock.getGroup().getId());
+
+        return stockProductRepository.findActiveByStock(stockId).stream()
+                .filter(item -> item.getMinimalQuantity() != null && item.getQuantity() < item.getMinimalQuantity())
+                .map(item -> {
+                    var source = item.getProduct();
+                    ProductResponseDto product = ProductResponseDto.builder()
+                            .id(source.getId())
+                            .name(source.getName())
+                            .category(source.getCategory())
+                            .unitOfMeasure(source.getUnitOfMeasure())
+                            .build();
+                    return new ShoppingSuggestionDto(
+                            product,
+                            item.getQuantity(),
+                            item.getMinimalQuantity() - item.getQuantity(),
+                            item.getQuantity() == 0 ? "OUT_OF_STOCK" : "LOW_STOCK");
+                })
+                .toList();
     }
 
     @Transactional
