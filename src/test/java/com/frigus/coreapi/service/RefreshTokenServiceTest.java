@@ -7,6 +7,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.SetOperations;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -19,14 +21,18 @@ import static org.mockito.Mockito.*;
 class RefreshTokenServiceTest {
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private HashOperations<String, Object, Object> hashOperations;
+    @Mock private SetOperations<String, String> setOperations;
     @InjectMocks private RefreshTokenService service;
 
     @Test
     void storesRefreshTokensForThirtyDaysAndCanValidateAndDeleteThem() {
         UUID userId = UUID.randomUUID();
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         String token = service.createRefreshToken(userId);
-        verify(valueOperations).set(eq("refresh:" + token), eq(userId+":0"), eq(30L), eq(TimeUnit.DAYS));
+        verify(valueOperations).set(eq("refresh:" + token), argThat(value -> value.startsWith(userId + ":0:")), eq(30L), eq(TimeUnit.DAYS));
 
         when(valueOperations.get("refresh:known")).thenReturn(userId.toString());
         assertThat(service.validateAndGetUserId("known")).isEqualTo(userId);

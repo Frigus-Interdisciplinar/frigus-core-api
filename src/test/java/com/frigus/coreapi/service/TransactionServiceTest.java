@@ -19,6 +19,8 @@ import com.frigus.coreapi.repository.PlanRepository;
 import com.frigus.coreapi.repository.SubscriptionRepository;
 import com.frigus.coreapi.repository.TransactionEventRepository;
 import com.frigus.coreapi.repository.TransactionRepository;
+import com.frigus.coreapi.repository.UserRepository;
+import com.frigus.coreapi.enums.AccountType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,6 +63,9 @@ class TransactionServiceTest {
 
     @Mock
     private TransactionMapper transactionMapper;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private TransactionService transactionService;
@@ -127,6 +132,8 @@ class TransactionServiceTest {
         verify(transactionRepository).save(any(Transaction.class));
         verify(transactionEventRepository).save(any(TransactionEvent.class));
         verify(transactionQueueProducer).enqueue(any(TransactionQueuePayload.class));
+        verify(userRepository, never()).completePlanSelection(any());
+        verify(userRepository).setPendingPlanTransaction(currentUser.getId(), savedTransaction.getId());
         verify(transactionMapper).toDto(savedTransaction);
     }
 
@@ -218,6 +225,20 @@ class TransactionServiceTest {
 
         verify(subscriptionRepository).save(any(Subscription.class));
         verify(transactionQueueProducer, never()).enqueue(any());
+        verify(userRepository).completePlanSelection(currentUser.getId());
+        var subscription = org.mockito.ArgumentCaptor.forClass(Subscription.class);
+        verify(subscriptionRepository).save(subscription.capture());
+        assertThat(subscription.getValue().getCurrentPeriodEnd()).isNull();
+    }
+
+    @Test
+    void rejectsPlanFromAnotherAccountTypeBeforeCreatingTransaction() {
+        currentUser.setAccountType(AccountType.DOMESTIC);
+        plan.setPlanCode("COMMERCIAL");
+        when(planRepository.findByPlanCode("COMMERCIAL")).thenReturn(Optional.of(plan));
+        var input = CheckoutRequestDto.builder().planCode("COMMERCIAL").paymentMethod(PaymentMethod.CREDIT_CARD).fakeCardLast4("1234").build();
+        assertThatThrownBy(() -> transactionService.checkout(currentUser, input)).isInstanceOf(BadRequestException.class).hasMessage("Plano incompatível");
+        verifyNoInteractions(transactionRepository, transactionQueueProducer, userRepository);
     }
 
     @Test

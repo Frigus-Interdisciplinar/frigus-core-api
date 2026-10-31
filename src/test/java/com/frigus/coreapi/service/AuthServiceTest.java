@@ -60,6 +60,7 @@ class AuthServiceTest {
         verify(userRepository).save(saved.capture());
         assertThat(saved.getValue().getRole()).isEqualTo(Role.USER);
         assertThat(saved.getValue().getAccountType()).isEqualTo(AccountType.DOMESTIC);
+        assertThat(saved.getValue().isPlanSelectionRequired()).isTrue();
         assertThat(result.getId()).isEqualTo(user.getId());
     }
 

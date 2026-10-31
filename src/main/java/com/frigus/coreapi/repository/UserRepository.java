@@ -6,6 +6,18 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface UserRepository extends BaseRepository<User, UUID> {
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("update User u set u.planSelectionRequired = false, u.pendingPlanTransactionId = null where u.id = :id")
+    void completePlanSelection(@org.springframework.data.repository.query.Param("id") UUID id);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("update User u set u.pendingPlanTransactionId = :transactionId where u.id = :id and u.planSelectionRequired = true")
+    void setPendingPlanTransaction(@org.springframework.data.repository.query.Param("id") UUID id, @org.springframework.data.repository.query.Param("transactionId") UUID transactionId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("update User u set u.pendingPlanTransactionId = null where u.id = :id and u.pendingPlanTransactionId = :transactionId")
+    void clearPendingPlanTransaction(@org.springframework.data.repository.query.Param("id") UUID id, @org.springframework.data.repository.query.Param("transactionId") UUID transactionId);
+
     boolean existsByEmail(String email);
     Optional<User> findByEmail(String email);
     Optional<User> findByEmailIgnoreCaseAndDeletedAtIsNull(String email);

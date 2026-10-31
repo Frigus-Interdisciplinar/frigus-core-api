@@ -4,6 +4,17 @@ namespace: frigus
 resources:
   - namespace.yaml
   - configmap.yaml
+  - bff-configmap.yaml
   - deployment.yaml
+  - bff-deployment.yaml
   - service.yaml
+  - bff-service.yaml
   - ingress.yaml
+  - pdb.yaml
+images:
+  - name: frigus-core-api
+    newName: ACCOUNT_ID.dkr.ecr.sa-east-1.amazonaws.com/frigus-core-api
+    newTag: REPLACE_ME
+  - name: frigus-bff
+    newName: ACCOUNT_ID.dkr.ecr.sa-east-1.amazonaws.com/frigus-bff
+    newTag: REPLACE_ME
