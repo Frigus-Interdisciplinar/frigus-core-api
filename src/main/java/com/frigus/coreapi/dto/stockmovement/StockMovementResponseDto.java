@@ -24,4 +24,6 @@ public class StockMovementResponseDto {
     private String reasonCode;
     private Integer balanceAfter;
     private Instant date;
+    private String observation;
+    private String purpose;
 }

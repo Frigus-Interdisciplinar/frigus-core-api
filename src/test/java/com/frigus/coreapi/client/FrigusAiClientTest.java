@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
@@ -99,6 +100,27 @@ class FrigusAiClientTest {
     }
 
     @Test
+    void sendsLargeReceiptProductListsInBatchesOfTenAndCombinesResults() {
+        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", SERVICE_KEY))
+                .andExpect(jsonPath("$.products", hasSize(10)))
+                .andRespond(withSuccess(invoiceItem(1), MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", SERVICE_KEY))
+                .andExpect(jsonPath("$.products", hasSize(1)))
+                .andRespond(withSuccess(invoiceItem(11), MediaType.APPLICATION_JSON));
+
+        var products = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(line -> new FrigusAiClient.InvoiceProductInput(line, "Product " + line, 1.0,
+                        "UN", 1.0, 1.0, "Product " + line))
+                .toList();
+
+        var result = client.extractInvoice(products);
+
+        assertThat(result.items()).extracting(FrigusAiClient.InvoiceItem::lineNumber).containsExactly(1, 11);
+    }
+
+    @Test
     void failedChatCreationProducesServiceUnavailableErrorWithoutSendingMessage() {
         expectMessage(null).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
         assertUnavailable(null);
@@ -117,6 +139,14 @@ class FrigusAiClientTest {
                 .andExpect(method(HttpMethod.POST)).andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("{\"userId\":\"123e4567-e89b-12d3-a456-426614174000\",\"message\":\"Dinner?\",\"stockId\":7,\"foodPreferences\":[\"VEGAN\"],\"sessionId\":" +
                         (session == null ? "null" : "\"" + session + "\"") + "}"));
+    }
+
+    private String invoiceItem(int lineNumber) {
+        return "{\"items\":[{\"lineNumber\":" + lineNumber + ",\"description\":\"Product " + lineNumber
+                + "\",\"productName\":\"Product " + lineNumber
+                + "\",\"quantity\":1,\"unit\":\"UN\",\"unitOfMeasure\":\"UNIT\",\"unitPrice\":1,"
+                + "\"totalPrice\":1,\"category\":\"GRAIN\",\"storagePlace\":\"PANTRY\",\"confidence\":1,"
+                + "\"evidence\":\"Product " + lineNumber + "\"}],\"warnings\":[]}";
     }
 
     private FrigusAiPromptPayload payload(String session) {

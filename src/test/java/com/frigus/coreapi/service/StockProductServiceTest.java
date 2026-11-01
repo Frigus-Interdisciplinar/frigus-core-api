@@ -35,6 +35,7 @@ class StockProductServiceTest {
     @Mock private ProductRepository productRepository;
     @Mock private GroupAccessService groupAccessService;
     @Mock private StockPurchaseRecorder purchaseRecorder;
+    @Mock private StockMovementService stockMovementService;
 
     @Test
     void shouldCreateStockProductWithCategoryAndDerivedStatus() {
@@ -61,16 +62,17 @@ class StockProductServiceTest {
                 .build();
         StockProductService service = new StockProductService(
                 stockProductRepository,
-                new StockProductMapper(),
+                new StockProductMapper(new com.frigus.coreapi.mapper.ProductMapper()),
                 stockRepository,
                 productRepository,
                 groupAccessService,
                 new StockProductStatusResolver(),
-                purchaseRecorder);
+                purchaseRecorder,
+                stockMovementService);
 
         when(stockRepository.findById(3)).thenReturn(Optional.of(stock));
         when(productRepository.findById(7)).thenReturn(Optional.of(product));
-        when(stockProductRepository.existsByProductIdAndStockIdAndExpireDate(7, 3, request.getExpireDate()))
+        when(stockProductRepository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(7, 3, request.getExpireDate(),null))
                 .thenReturn(false);
         when(stockProductRepository.saveAndFlush(any(StockProduct.class)))
                 .thenAnswer(invocation -> {
@@ -85,6 +87,7 @@ class StockProductServiceTest {
         assertThat(response.getCategory()).isEqualTo(Category.DAIRY);
         assertThat(response.getProductStatus()).isEqualTo(ProductStatus.NEAR_EXPIRATION);
         assertThat(response.getQuantity()).isEqualTo(4);
+        assertThat(response.getInitialQuantity()).isEqualTo(4);
         assertThat(response.getPurchaseUnitPrice()).isEqualByComparingTo("7.90");
         assertThat(response.getProduct().getName()).isEqualTo("Leite");
         assertThat(response.getProduct().getUnitPrice()).isEqualByComparingTo("8.50");
@@ -93,6 +96,6 @@ class StockProductServiceTest {
         writes.verify(purchaseRecorder).lockGroup(groupId);
         writes.verify(stockProductRepository).saveAndFlush(any(StockProduct.class));
         writes.verify(purchaseRecorder).recordCreatedLot(any(StockProduct.class));
-        verify(groupAccessService).requireGroupAccess(groupId);
+        verify(groupAccessService).requireGroupWriteAccess(groupId);
     }
 }

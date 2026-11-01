@@ -18,6 +18,7 @@ import java.util.UUID;
 public class ShoppingListResponseDto {
     private UUID id;
     private Integer stockId;
+    private String name;
     private String stockName;
     private LocalDate date;
     private ListStatus status;

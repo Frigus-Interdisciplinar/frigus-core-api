@@ -77,7 +77,7 @@ public class AuthService {
 
         return LoginResponseDto.builder()
                 .accessToken(tokenProvider.generateAccessToken(user))
-                .refreshToken(refreshTokenService.createRefreshToken(user.getId()))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion()))
                 .user(userMapper.toDto(user))
                 .build();
     }
@@ -107,7 +107,7 @@ public class AuthService {
 
         return LoginResponseDto.builder()
                 .accessToken(tokenProvider.generateAccessToken(user))
-                .refreshToken(refreshTokenService.createRefreshToken(user.getId()))
+                .refreshToken(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion()))
                 .user(userMapper.toDto(user))
                 .build();
     }
@@ -120,10 +120,13 @@ public class AuthService {
         }
 
         User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("Usuário não encontrado", "Usuário inválido"));
+        if (!refreshTokenService.isCurrentVersion(refreshToken, user.getTokenVersion())) {
+            throw new UnauthorizedException("Refresh token inválido ou expirado", "Faça login novamente");
+        }
 
         refreshTokenService.deleteRefreshToken(refreshToken);
         String newAccessToken = tokenProvider.generateAccessToken(user);
-        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId());
+        String newRefreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion());
 
         return LoginResponseDto.builder()
                 .accessToken(newAccessToken)

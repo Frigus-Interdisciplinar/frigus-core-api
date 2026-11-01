@@ -18,7 +18,6 @@ public class CheckoutRequestDto {
     @NotNull(message = "Plano deve ser informado")
     private String planCode;
 
-    @NotNull(message = "Forma de pagamento deve ser informada")
     private PaymentMethod paymentMethod;
 
     @Pattern(regexp = "^\\d{4}$", message = "Os últimos 4 dígitos do cartão devem conter exatamente 4 números")

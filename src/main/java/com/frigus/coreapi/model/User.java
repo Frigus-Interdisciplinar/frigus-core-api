@@ -33,6 +33,9 @@ public class User {
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
+    @Column(name = "profile_picture_url", length = 2048)
+    private String profilePictureUrl;
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
@@ -62,6 +65,11 @@ public class User {
     @ColumnDefault("USER")
     @Column(name = "role", nullable = false, columnDefinition = "user_role_enum not null")
     private Role role;
+
+    @Builder.Default
+    @Column(nullable=false)
+    private int tokenVersion=0;
+    private Instant deletedAt;
 
     @OneToOne(mappedBy = "user", fetch = FetchType.EAGER)
     private Subscription subscription;

@@ -21,7 +21,7 @@ import com.frigus.coreapi.dto.plan.PlanLimitsDto;
 @Service
 @RequiredArgsConstructor
 public class PlanLimitsResolverService {
-    
+
     private final UserRepository userRepository;
 
     public PlanLimitsDto resolveLimitsForCurrentUser() {
@@ -29,28 +29,28 @@ public class PlanLimitsResolverService {
         if (user == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
-        
+
         Subscription subscription = user.getSubscription();
         if (subscription == null || subscription.getPlan() == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
-        
+
         Plan plan = subscription.getPlan();
-        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode()); 
+        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode());
         return getLimitsForPlan(planCode);
     }
 
     public PlanLimitsDto getLimitsForUser(UUID userId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdWithSubscriptionAndPlan(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário"));
-        
+
         Subscription subscription = user.getSubscription();
         if (subscription == null || subscription.getPlan() == null) {
             return getLimitsForPlan(PlanCode.FREE);
         }
 
         Plan plan = subscription.getPlan();
-        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode()); 
+        PlanCode planCode = PlanCode.valueOf(plan.getPlanCode());
 
         return getLimitsForPlan(planCode);
     }

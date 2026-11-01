@@ -81,7 +81,7 @@ public class GroupMapper implements BaseMapper<Group, GroupResponseDto, GroupCre
                 .userId(userGroup.getUser().getId())
                 .name(userGroup.getUser().getName())
                 .email(userGroup.getUser().getEmail())
-                .isOwner(isOwner)
+                .isOwner(isOwner).memberRole(userGroup.getMemberRole())
                 .joinedAt(userGroup.getCreatedAt())
                 .build();
     }

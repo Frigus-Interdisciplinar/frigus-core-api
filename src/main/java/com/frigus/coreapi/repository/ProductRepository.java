@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public interface ProductRepository extends BaseRepository<Product, Integer> {
     Optional<Product> findFirstByNameIgnoreCase(String name);
+    Optional<Product> findFirstByNameIgnoreCaseAndOwnerGroupIsNull(String name);
 
     Optional<Product> findFirstByNameIgnoreCaseAndOwnerGroupId(String name, UUID ownerGroupId);
 
@@ -32,4 +33,7 @@ public interface ProductRepository extends BaseRepository<Product, Integer> {
             )
             """, nativeQuery = true)
     boolean isReferenced(@Param("productId") Integer productId);
+    org.springframework.data.domain.Page<Product> findByOwnerGroupIsNull(org.springframework.data.domain.Pageable pageable);
+    java.util.List<Product> findByOwnerGroupId(java.util.UUID groupId);
+    java.util.Optional<Product> findFirstByOwnerGroupIdAndNameIgnoreCase(java.util.UUID groupId,String name);
 }

@@ -21,4 +21,6 @@ public class RecipeResponseDto {
     private Boolean domesticOnly;
     private Boolean active;
     private Instant createdAt;
+    private boolean favorite;
+    private java.util.List<com.frigus.coreapi.dto.ingredient.IngredientResponseDto> ingredients;
 }

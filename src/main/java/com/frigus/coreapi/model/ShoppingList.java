@@ -44,6 +44,10 @@ public class ShoppingList {
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
     private ListStatus status;
+    @Builder.Default @Column(nullable=false,length=255) private String name="Lista de compras";
+    @Column(length=255) private String supplier;
+    @Column(precision=12,scale=2) private java.math.BigDecimal total;
+    private Instant completedAt;
 
     @NotNull
     @ColumnDefault("CURRENT_TIMESTAMP")

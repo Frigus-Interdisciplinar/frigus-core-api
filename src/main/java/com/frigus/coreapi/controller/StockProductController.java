@@ -3,6 +3,8 @@ package com.frigus.coreapi.controller;
 import com.frigus.coreapi.dto.stockproduct.StockProductCreateRequestDto;
 import com.frigus.coreapi.dto.stockproduct.StockProductResponseDto;
 import com.frigus.coreapi.dto.stockproduct.StockProductUpdateRequestDto;
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.StoragePlace;
 import com.frigus.coreapi.model.StockProduct;
 import com.frigus.coreapi.service.StockProductService;
 import jakarta.validation.Valid;
@@ -27,8 +29,12 @@ public class StockProductController extends BaseController<StockProduct, Integer
     }
 
     @GetMapping
-    public Page<StockProductResponseDto> findAll(@RequestParam Integer stockId, Pageable pageable) {
-        return service.findByStockId(stockId, pageable);
+    public Page<StockProductResponseDto> findAll(@RequestParam Integer stockId,
+                                                  @RequestParam(required = false) Category category,
+                                                  @RequestParam(required = false) StoragePlace storagePlace,
+                                                  @RequestParam(required = false) String q,
+                                                  Pageable pageable) {
+        return service.findByStockId(stockId, category, storagePlace, q, pageable);
     }
 
     @PostMapping

@@ -1,6 +1,7 @@
 package com.frigus.coreapi.dto.stockproduct;
 
-import jakarta.validation.constraints.NotNull;
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.StoragePlace;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -26,6 +27,26 @@ public class StockProductUpdateRequestDto {
     @Digits(integer = 8, fraction = 2, message = "O preço de aquisição deve ter no máximo 8 dígitos inteiros e 2 decimais")
     private BigDecimal purchaseUnitPrice;
 
-    @NotNull(message = "A data de validade é obrigatória")
     private LocalDate expireDate;
+
+    @jakarta.validation.constraints.Size(max = 255, message = "O nome deve ter no máximo 255 caracteres")
+    @jakarta.validation.constraints.Pattern(regexp = "^$|.*\\S.*", message = "O nome não pode ficar vazio")
+    private String name;
+
+    private Category category;
+    private StoragePlace storagePlace;
+
+    @PositiveOrZero(message = "A quantidade não pode ser negativa")
+    private Integer quantity;
+
+    @PositiveOrZero(message = "A quantidade inicial não pode ser negativa")
+    private Integer initialQuantity;
+
+    @jakarta.validation.constraints.Size(max = 120)
+    private String batch;
+
+    public boolean isEmpty() {
+        return minimalQuantity == null && expireDate == null && name == null && category == null
+                && storagePlace == null && quantity == null && initialQuantity == null && batch == null && purchaseUnitPrice == null;
+    }
 }

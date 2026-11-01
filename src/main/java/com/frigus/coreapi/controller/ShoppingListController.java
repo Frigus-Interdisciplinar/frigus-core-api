@@ -6,6 +6,7 @@ import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductUpdateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListUpdateRequestDto;
+import com.frigus.coreapi.dto.shopping.ShoppingSuggestionDto;
 import com.frigus.coreapi.enums.ListStatus;
 import com.frigus.coreapi.enums.ProductListStatus;
 import com.frigus.coreapi.service.ShoppingListProductService;
@@ -48,6 +49,12 @@ public class ShoppingListController {
             @RequestParam(required = false) ListStatus status,
             Pageable pageable) {
         return shoppingListService.findAll(stockId, groupId, status, pageable);
+    }
+
+    @GetMapping("/suggestions")
+    @Operation(summary = "Suggest products that are below their minimum stock quantity")
+    public List<ShoppingSuggestionDto> suggestions(@RequestParam Integer stockId) {
+        return shoppingListService.suggestions(stockId);
     }
 
     @GetMapping("/{id}")
@@ -102,7 +109,7 @@ public class ShoppingListController {
     public ShoppingListProductResponseDto addItem(@PathVariable UUID listId, @Valid @RequestBody ShoppingListProductCreateRequestDto dto) {
         return shoppingListProductService.addItem(listId, dto);
     }
-    
+
     @PostMapping("/{listId}/items/batch")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Add multiple items to a shopping list")

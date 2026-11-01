@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PlanLimitsResolverServiceTest {
@@ -39,10 +40,11 @@ class PlanLimitsResolverServiceTest {
         UUID id = UUID.randomUUID();
         User user = User.builder().id(id).subscription(Subscription.builder()
                 .plan(Plan.builder().planCode("PLUS").build()).build()).build();
-        when(userRepository.findById(id)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdWithSubscriptionAndPlan(id)).thenReturn(Optional.of(user));
         assertThat(service.getLimitsForUser(id).getPlanCode()).isEqualTo(PlanCode.PLUS);
+        verify(userRepository).findByIdWithSubscriptionAndPlan(id);
         UUID missing = UUID.randomUUID();
-        when(userRepository.findById(missing)).thenReturn(Optional.empty());
+        when(userRepository.findByIdWithSubscriptionAndPlan(missing)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getLimitsForUser(missing)).isInstanceOf(NotFoundException.class);
     }
 }

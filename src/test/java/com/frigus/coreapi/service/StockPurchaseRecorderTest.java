@@ -3,6 +3,7 @@ package com.frigus.coreapi.service;
 import com.frigus.coreapi.dto.stockproduct.StockProductCreateRequestDto;
 import com.frigus.coreapi.enums.Category;
 import com.frigus.coreapi.enums.UnitOfMeasure;
+import com.frigus.coreapi.mapper.ProductMapper;
 import com.frigus.coreapi.mapper.StockProductMapper;
 import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.Product;
@@ -201,8 +202,8 @@ class StockPurchaseRecorderTest {
 
     private StockProductService service(MoneySavingLedgerService ledgerService) {
         var recorder = proxied(new StockPurchaseRecorder(jdbc, ledgerService, Clock.fixed(NOW, ZoneOffset.UTC)));
-        return proxied(new StockProductService(lots, new StockProductMapper(), stocks, products,
-                access, new StockProductStatusResolver(), recorder));
+        return proxied(new StockProductService(lots, new StockProductMapper(new ProductMapper()), stocks, products,
+                access, new StockProductStatusResolver(), recorder, mock(StockMovementService.class)));
     }
 
     @SuppressWarnings("unchecked")

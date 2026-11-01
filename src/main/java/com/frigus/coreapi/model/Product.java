@@ -30,6 +30,9 @@ public class Product {
     @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
     private String name;
 
+    @ManyToOne(fetch=FetchType.LAZY)
+    @JoinColumn(name="owner_group_id")
+    private Group ownerGroup;
     @Column(name = "category", columnDefinition = "category_enum not null")
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
@@ -61,7 +64,7 @@ public class Product {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "owner_group_id")
+    @Column(name = "owner_group_id", insertable = false, updatable = false)
     private java.util.UUID ownerGroupId;
 
 

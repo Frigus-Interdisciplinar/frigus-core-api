@@ -6,35 +6,40 @@ import com.frigus.coreapi.exception.ServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-
+import java.util.UUID;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
 @Component
 public class FrigusAiClient {
+    private static final int INVOICE_PRODUCT_BATCH_SIZE = 10;
 
     private final RestClient restClient;
     private final boolean configured;
+    private final String apiKey;
 
     public FrigusAiClient(
             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
             @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
             @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
         this.configured = apiKey != null && apiKey.length() >= 32;
+        this.apiKey = apiKey;
         if (apiKeyRequired && !configured) {
             throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
         }
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(110_000);
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(110));
         RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(factory);
-        if (configured) {
-            builder.defaultHeader("X-Core-Service-Key", apiKey);
+        // Uvicorn serves HTTP/1.1; avoid a JDK h2c upgrade on the internal request.
+        if (apiKey != null && !apiKey.isBlank()) {
+            builder.defaultHeader("X-API-Key", apiKey);
         }
         this.restClient = builder.build();
     }
@@ -42,6 +47,35 @@ public class FrigusAiClient {
 
     public record CoreChatRequest(String userId, Integer stockId, String message, String sessionId,
                                   List<String> foodPreferences) {}
+    public record ChatCreateResponse(String chat_id, Integer stock_id) {}
+    public record ChatMessageRequest(String content) {}
+    public record ChatMessageResponse(String chat_id, String content) {}
+    public record InvoiceProductInput(int lineNumber, String description, Double quantity, String unit, Double unitPrice, Double totalPrice, String evidence) {}
+    public record InvoiceExtractionRequest(String documentType, String state, String locale, List<InvoiceProductInput> products) {}
+    public record InvoiceItem(int lineNumber, String description, String productName, String brand, Double quantity, String unit, String unitOfMeasure, Double unitPrice, Double totalPrice, String category, String storagePlace, Double confidence, String evidence) {}
+    public record InvoiceExtraction(String accessKey, String issuerName, String issuedAt, Double totalAmount, List<InvoiceItem> items, List<String> warnings) {}
+
+    public InvoiceExtraction extractInvoice(List<InvoiceProductInput> products) {
+        try {
+            var items = new java.util.ArrayList<InvoiceItem>();
+            var warnings = new java.util.ArrayList<String>();
+            for (int start = 0; start < products.size(); start += INVOICE_PRODUCT_BATCH_SIZE) {
+                var batch = products.subList(start, Math.min(start + INVOICE_PRODUCT_BATCH_SIZE, products.size()));
+                var result = restClient.post().uri("/v1/invoices/extract")
+                        .header("X-API-Key", apiKey == null ? "" : apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(new InvoiceExtractionRequest("NFCE", "SP", "pt-BR", batch))
+                        .retrieve().body(InvoiceExtraction.class);
+                if (result == null || result.items() == null) throw new IllegalStateException("Resposta de extração vazia");
+                items.addAll(result.items());
+                if (result.warnings() != null) warnings.addAll(result.warnings());
+            }
+            return new InvoiceExtraction(null, null, null, null, items, warnings);
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Falha ao extrair NFC-e via frigus-ai: {}", e.getMessage());
+            throw new ServiceUnavailableException("Falha na extração da nota", "A extração da nota está temporariamente indisponível.");
+        }
+    }
 
     public FrigusAiRecipeResponse requestRecipeFromAi(FrigusAiPromptPayload payload) {
         long started = System.nanoTime();
@@ -60,6 +94,7 @@ public class FrigusAiClient {
                     payload.getFoodPreferences() == null ? List.of() : payload.getFoodPreferences());
             FrigusAiRecipeResponse response = restClient.post()
                     .uri("/internal/core/chat")
+                    .header("X-Core-Service-Key", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()

@@ -33,4 +33,11 @@ public interface ShoppingListRepository extends BaseRepository<ShoppingList, UUI
                                                @Param("status") ListStatus status, Pageable pageable);
 
     Optional<ShoppingList> findFirstByStockIdAndStatusOrderByCreatedAtDesc(Integer stockId, ListStatus status);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from ShoppingList l where l.id = :id")
+    Optional<ShoppingList> lockById(@Param("id") UUID id);
+
+    @Query("select count(l) from ShoppingList l where l.stock.group.id = :groupId and l.status = :status and l.completedAt >= :start and l.completedAt < :end")
+    long countCompleted(@Param("groupId") UUID groupId, @Param("status") ListStatus status, @Param("start") java.time.Instant start, @Param("end") java.time.Instant end);
 }

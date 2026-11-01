@@ -34,7 +34,7 @@ public class ProfileController {
     @PatchMapping
     public UserResponseDto patchProfile(
             @AuthenticationPrincipal User currentUser,
-            @RequestBody UserPatchRequestDto dto) {
+            @Valid @RequestBody UserPatchRequestDto dto) {
         return profileService.patchProfile(currentUser, dto);
     }
 

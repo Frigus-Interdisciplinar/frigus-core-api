@@ -80,6 +80,12 @@ public class GlobalExceptionHandler {
         return buildResponse(ex);
     }
 
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<ErrorResponseDto> handleAppException(AppException ex) {
+        log.warn("Erro de domínio {}: {}", ex.getCode(), ex.getMessage());
+        return buildResponse(ex);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDto> handleGeneric(Exception ex) {
         log.error("Exceção não tratada: {}", ex.getMessage(), ex);

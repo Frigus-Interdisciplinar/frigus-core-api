@@ -22,9 +22,11 @@ public class StockProductResponseDto {
     private StockProductProductResponseDto product;
     private Integer stockId;
     private Integer quantity;
+    private Integer initialQuantity;
     private Integer minimalQuantity;
     private BigDecimal purchaseUnitPrice;
     private LocalDate expireDate;
     private ProductStatus productStatus;
     private Category category;
+    private String batch;
 }

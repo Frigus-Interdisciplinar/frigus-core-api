@@ -1,3 +1,12 @@
+-- Empty-database bootstrap snapshot. No DROP TABLE is performed.
+-- Normal API startup uses Flyway. For existing databases use migrations, not this snapshot.
+-- Generated from src/main/resources/db/migration; see docs/local-development.md.
+DO $$ BEGIN
+ IF to_regclass('public.users') IS NOT NULL THEN
+  RAISE EXCEPTION 'This bootstrap requires an empty database. Use Flyway to upgrade an existing database.';
+ END IF;
+END $$;
+-- B003__core_schema.sql
 -- ============================================================
 -- EXTENSIONS
 -- ============================================================
@@ -63,38 +72,6 @@ DROP TABLE IF EXISTS groups CASCADE;
 -- ============================================================
 -- ENUMS
 -- ============================================================
-DROP TYPE IF EXISTS message_type_enum CASCADE;
-
-DROP TYPE IF EXISTS notification_type_enum CASCADE;
-
-DROP TYPE IF EXISTS conversation_type_enum CASCADE;
-
-DROP TYPE IF EXISTS movement_type_enum CASCADE;
-
-DROP TYPE IF EXISTS product_list_status_enum CASCADE;
-
-DROP TYPE IF EXISTS list_status_enum CASCADE;
-
-DROP TYPE IF EXISTS product_status_enum CASCADE;
-
-DROP TYPE IF EXISTS storage_place_enum CASCADE;
-
-DROP TYPE IF EXISTS category_enum CASCADE;
-
-DROP TYPE IF EXISTS account_type_enum CASCADE;
-
-DROP TYPE IF EXISTS billing_interval_enum CASCADE;
-
-DROP TYPE IF EXISTS user_role_enum CASCADE;
-
-DROP TYPE IF EXISTS payment_method_enum CASCADE;
-
-DROP TYPE IF EXISTS subscription_status_enum CASCADE;
-
-DROP TYPE IF EXISTS transaction_status_enum CASCADE;
-
-DROP TYPE IF EXISTS unit_of_measure_enum CASCADE;
-
 CREATE TYPE unit_of_measure_enum AS ENUM(
   'KILOGRAM',
   'GRAM',
@@ -117,7 +94,12 @@ CREATE TYPE category_enum AS ENUM(
   'GRAIN',
   'BEVERAGE',
   'CLEANING',
-  'PERSONAL_HYGIENE'
+  'PERSONAL_HYGIENE',
+  'FISH',
+  'FROZEN',
+  'SWEETS',
+  'CANNED',
+  'SEASONING'
 );
 
 CREATE TYPE storage_place_enum AS ENUM('FRIDGE', 'FREEZER', 'PANTRY', 'CABINET', 'SHELF');
@@ -171,6 +153,7 @@ CREATE TYPE transaction_status_enum AS ENUM(
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR NOT NULL,
+  profile_picture_url VARCHAR(2048),
   birth_date DATE,
   account_type account_type_enum NOT NULL,
   role user_role_enum NOT NULL DEFAULT 'USER',
@@ -184,13 +167,14 @@ CREATE TABLE users (
 
 CREATE TABLE groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id UUID NOT NULL,
+  owner_id UUID,
   name VARCHAR NOT NULL,
   banner_picture TEXT,
   time_zone VARCHAR(80) NOT NULL DEFAULT 'America/Sao_Paulo',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
+  CONSTRAINT chk_active_groups_require_owner CHECK (deleted_at IS NOT NULL OR owner_id IS NOT NULL),
   CONSTRAINT fk_groups_owner_id_users FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
@@ -251,6 +235,7 @@ CREATE TABLE notifications (
   reference_id VARCHAR(120),
   deduplication_key VARCHAR(220),
   read_at TIMESTAMP,
+  deleted_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_notifications_recipient_user_id_users FOREIGN KEY (recipient_user_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_notifications_group_id_groups FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
@@ -261,6 +246,7 @@ CREATE TABLE stock_products (
   product_id INTEGER NOT NULL,
   stock_id INTEGER NOT NULL,
   quantity INTEGER NOT NULL,
+  initial_quantity INTEGER NOT NULL,
   minimal_quantity INTEGER,
   purchase_unit_price NUMERIC(10, 2),
   expire_date DATE NOT NULL,
@@ -496,6 +482,17 @@ CREATE TABLE message_attachments (
   CONSTRAINT fk_message_attachments_message_id_messages FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
 );
 
+CREATE TABLE message_reactions (
+  id SERIAL PRIMARY KEY,
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  emoji VARCHAR(16) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_message_reactions_message_user_emoji UNIQUE (message_id, user_id, emoji)
+);
+CREATE INDEX idx_message_reactions_message ON message_reactions(message_id);
+CREATE INDEX idx_messages_content_search ON messages USING GIN (to_tsvector('simple', coalesce(content, '')));
+
 CREATE TABLE message_reads (
   message_id INTEGER NOT NULL,
   conversation_id UUID NOT NULL,
@@ -718,9 +715,7 @@ CREATE INDEX idx_groups_deleted_at ON groups (deleted_at);
 
 CREATE INDEX idx_groups_owner ON groups (owner_id);
 
-CREATE UNIQUE INDEX uq_groups_one_active_per_owner ON groups (owner_id)
-WHERE
-  deleted_at IS NULL;
+-- One-active-group ownership is enforced by the application until historical data is cleaned.
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS
@@ -1082,3 +1077,139 @@ $$;
 CREATE TRIGGER trg_notify_shopping_list_product_added
 AFTER INSERT ON shopping_list_products
 FOR EACH ROW EXECUTE FUNCTION trg_fn_notify_shopping_list_product_added();
+
+-- V004__preferences_invites_and_recipes.sql
+CREATE TABLE user_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  expiration_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  low_stock_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  shopping_reminders_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  weekly_summary_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  theme VARCHAR(16) NOT NULL DEFAULT 'SYSTEM' CHECK (theme IN ('LIGHT','DARK','SYSTEM')),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE user_groups ADD COLUMN member_role VARCHAR(16) NOT NULL DEFAULT 'EDITOR'
+ CHECK (member_role IN ('EDITOR','VIEWER'));
+CREATE TABLE group_invitations (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+ email VARCHAR(255) NOT NULL,
+ name VARCHAR(255),
+ member_role VARCHAR(16) NOT NULL CHECK (member_role IN ('EDITOR','VIEWER')),
+ token_hash VARCHAR(64) NOT NULL UNIQUE,
+ expires_at TIMESTAMP NOT NULL,
+ accepted_at TIMESTAMP,
+ revoked_at TIMESTAMP,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_group_invitations_group ON group_invitations(group_id, created_at DESC);
+CREATE UNIQUE INDEX uq_group_invitations_pending ON group_invitations(group_id, LOWER(email))
+ WHERE accepted_at IS NULL AND revoked_at IS NULL;
+CREATE TABLE recipe_favorites (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(user_id, recipe_id)
+);
+CREATE INDEX idx_recipe_favorites_user ON recipe_favorites(user_id, created_at DESC);
+CREATE TABLE password_reset_tokens (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ token_hash VARCHAR(64) NOT NULL UNIQUE,
+ expires_at TIMESTAMP NOT NULL,
+ consumed_at TIMESTAMP,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_password_reset_tokens_user ON password_reset_tokens(user_id, created_at DESC);
+ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
+
+-- V005__inventory_history_and_scoped_products.sql
+-- Java holds the row lock and applies movements. The legacy trigger applied them a second time.
+DROP TRIGGER IF EXISTS trg_stock_movements_apply ON stock_movements;
+DROP FUNCTION IF EXISTS trg_fn_stock_movements_apply();
+ALTER TABLE stock_movements ADD COLUMN observation VARCHAR(2000);
+ALTER TABLE stock_movements ADD COLUMN balance_after INTEGER;
+ALTER TABLE stock_movements ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'INVENTORY'
+ CHECK (purpose IN ('INVENTORY','CONSUMPTION','DISCARD'));
+-- Historical discarded quantities cannot be inferred reliably and remain NULL.
+ALTER TABLE "discard" ADD COLUMN movement_id INTEGER UNIQUE REFERENCES stock_movements(id);
+ALTER TABLE stock_products ADD COLUMN deleted_at TIMESTAMP;
+ALTER TABLE stock_products ADD COLUMN batch VARCHAR(120);
+ALTER TABLE stock_products DROP CONSTRAINT uq_stock_products_product_stock_expire;
+CREATE UNIQUE INDEX uq_stock_products_active_product_stock_expire_batch
+ ON stock_products(product_id, stock_id, expire_date, COALESCE(batch,'')) WHERE deleted_at IS NULL;
+ALTER TABLE stock_products ADD CONSTRAINT chk_stock_products_quantity CHECK(quantity >= 0) NOT VALID;
+DROP INDEX uq_products_name_ci;
+CREATE UNIQUE INDEX uq_products_global_name ON products(LOWER(name)) WHERE owner_group_id IS NULL;
+CREATE UNIQUE INDEX uq_products_group_name ON products(owner_group_id, LOWER(name)) WHERE owner_group_id IS NOT NULL;
+CREATE INDEX idx_stock_movements_summary ON stock_movements(date, purpose, movement_type);
+CREATE INDEX idx_stock_products_active_stock ON stock_products(stock_id, expire_date) WHERE deleted_at IS NULL;
+
+-- V006__shopping_and_commercial.sql
+ALTER TABLE shopping_lists ADD COLUMN name VARCHAR(255) NOT NULL DEFAULT 'Lista de compras';
+ALTER TABLE shopping_lists ADD COLUMN supplier VARCHAR(255);
+ALTER TABLE shopping_lists ADD COLUMN completed_at TIMESTAMP;
+ALTER TABLE shopping_lists ADD COLUMN total NUMERIC(12,2) CHECK(total >= 0);
+ALTER TABLE shopping_list_products ADD COLUMN purchased_unit_price NUMERIC(10,2) CHECK(purchased_unit_price >= 0);
+UPDATE shopping_list_products SET status='PENDING' WHERE status IS NULL;
+ALTER TABLE shopping_list_products ALTER COLUMN status SET DEFAULT 'PENDING';
+ALTER TABLE shopping_list_products ALTER COLUMN status SET NOT NULL;
+ALTER TABLE shopping_list_products ADD CONSTRAINT chk_shopping_quantity CHECK(quantity > 0) NOT VALID;
+CREATE INDEX idx_shopping_lists_stock_status ON shopping_lists(stock_id, status, created_at DESC);
+CREATE INDEX idx_shopping_pending ON shopping_list_products(list_id) WHERE status='PENDING';
+CREATE TABLE business_expenses (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ group_id UUID NOT NULL REFERENCES groups(id) ON DELETE RESTRICT,
+ created_by UUID NOT NULL REFERENCES users(id),
+ description VARCHAR(255) NOT NULL,
+ category VARCHAR(120) NOT NULL,
+ amount NUMERIC(12,2) NOT NULL CHECK(amount > 0),
+ expense_date DATE NOT NULL,
+ supplier VARCHAR(255),
+ shopping_list_id UUID UNIQUE REFERENCES shopping_lists(id) ON DELETE RESTRICT,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_business_expenses_group_date ON business_expenses(group_id, expense_date);
+-- The free checkout produces a zero-valued transaction.
+ALTER TABLE transactions DROP CONSTRAINT transactions_amount_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_amount_check CHECK(amount >= 0);
+
+-- V007__notification_preferences.sql
+ALTER TYPE notification_type_enum ADD VALUE IF NOT EXISTS 'WEEKLY_SUMMARY';
+-- Preserve DB-generated notifications and respect each recipient's preference.
+CREATE OR REPLACE FUNCTION trg_fn_filter_notification_preferences() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+ IF EXISTS (SELECT 1 FROM user_preferences p WHERE p.user_id=NEW.recipient_user_id AND (
+  (NEW.type::text='PRODUCT_NEAR_EXPIRATION' AND NOT p.expiration_alerts_enabled) OR
+  (NEW.type::text IN ('LOW_STOCK','OUT_OF_STOCK') AND NOT p.low_stock_alerts_enabled) OR
+  (NEW.type::text='SHOPPING_LIST_REMINDER' AND NOT p.shopping_reminders_enabled) OR
+  (NEW.type::text='WEEKLY_SUMMARY' AND NOT p.weekly_summary_enabled)
+ )) THEN RETURN NULL; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER trg_filter_notification_preferences BEFORE INSERT ON notifications
+ FOR EACH ROW EXECUTE FUNCTION trg_fn_filter_notification_preferences();
+
+-- V008__active_stock_alerts.sql
+CREATE OR REPLACE FUNCTION trg_fn_notify_commercial_stock_level() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE v_group_id UUID; v_type notification_type_enum; v_title VARCHAR;
+BEGIN
+ SELECT s.group_id INTO v_group_id FROM stocks s JOIN groups g ON g.id=s.group_id
+ JOIN users u ON u.id=g.owner_id WHERE s.id=NEW.stock_id AND s.deleted_at IS NULL
+ AND g.deleted_at IS NULL AND u.account_type IN ('DOMESTIC','COMMERCIAL');
+ IF v_group_id IS NULL OR NEW.deleted_at IS NOT NULL THEN RETURN NEW; END IF;
+ IF NEW.quantity=0 AND (TG_OP='INSERT' OR OLD.quantity IS DISTINCT FROM 0) THEN
+  v_type:='OUT_OF_STOCK'; v_title:='Estoque zerado';
+ ELSIF NEW.minimal_quantity IS NOT NULL AND NEW.quantity>0 AND NEW.quantity<=NEW.minimal_quantity
+ AND (TG_OP='INSERT' OR OLD.quantity>COALESCE(OLD.minimal_quantity,-1)
+ OR OLD.minimal_quantity IS DISTINCT FROM NEW.minimal_quantity) THEN
+  v_type:='LOW_STOCK'; v_title:='Produto com pouca quantidade no estoque';
+ ELSE RETURN NEW; END IF;
+ INSERT INTO notifications(recipient_user_id,group_id,type,title,body,reference_id)
+ SELECT ug.user_id,v_group_id,v_type,v_title,p.name || ': quantidade atual ' || NEW.quantity,NEW.id::text
+ FROM user_groups ug CROSS JOIN products p WHERE ug.group_id=v_group_id AND p.id=NEW.product_id;
+ RETURN NEW;
+END $$;

@@ -30,6 +30,7 @@ public class TokenProvider {
                 .withExpiresAt(expirationDate)
                 .withIssuer("frigus")
                 .withClaim("plan", user.getPlanCodeFromUser())
+                .withClaim("tokenVersion", user.getTokenVersion())
                 .sign(Algorithm.HMAC256(secret));
     }
 

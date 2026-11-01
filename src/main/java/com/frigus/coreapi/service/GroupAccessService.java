@@ -45,4 +45,32 @@ public class GroupAccessService {
         return groupRepository.findByIdAndDeletedAtIsNull(groupId)
                 .orElseThrow(() -> new NotFoundException("Grupo não encontrado", "O grupo informado não está ativo"));
     }
+
+    public void requireGroupWriteAccess(UUID groupId) {
+        requireGroupAccess(groupId);
+        User current = requireCurrentUser();
+        if (current.getRole() == Role.ADMIN) return;
+        var membership = userGroupRepository.findByUserIdAndGroupId(current.getId(), groupId)
+                .orElseThrow(() -> new ForbiddenException("Sem vínculo no grupo", "Acesso negado"));
+        if (membership.getGroup().getDeletedAt() != null) {
+            throw new ForbiddenException("Grupo inativo", "Acesso negado");
+        }
+        if (membership.getGroup().getOwner() != null
+                && membership.getGroup().getOwner().getId().equals(current.getId())) return;
+        if (membership.getMemberRole() == com.frigus.coreapi.enums.MemberRole.VIEWER) {
+            throw new ForbiddenException("Permissão somente de leitura", "Você não pode editar este grupo");
+        }
+    }
+
+    public void requireGroupOwnerAccess(UUID groupId) {
+        requireGroupAccess(groupId);
+        User current = requireCurrentUser();
+        if (current.getRole() == Role.ADMIN) return;
+        var membership = userGroupRepository.findByUserIdAndGroupId(current.getId(), groupId)
+                .orElseThrow(() -> new ForbiddenException("Sem vínculo no grupo", "Acesso negado"));
+        if (membership.getGroup().getDeletedAt() != null || membership.getGroup().getOwner() == null
+                || !membership.getGroup().getOwner().getId().equals(current.getId())) {
+            throw new ForbiddenException("Gerenciamento restrito ao proprietário", "Acesso negado");
+        }
+    }
 }

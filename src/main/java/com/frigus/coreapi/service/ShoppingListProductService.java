@@ -31,7 +31,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
     private final ShoppingListService shoppingListService;
     private final GroupAccessService groupAccessService;
 
-    public ShoppingListProductService(ShoppingListProductRepository repository, 
+    public ShoppingListProductService(ShoppingListProductRepository repository,
                                       ShoppingListProductMapper mapper,
                                       ProductRepository productRepository,
                                       ShoppingListRepository shoppingListRepository,
@@ -76,12 +76,12 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
         item.setStatus(ProductListStatus.PENDING);
 
         item = repository.save(item);
-        
+
         shoppingListService.checkAndAutoCloseList(listId);
 
         return mapper.toDto(item);
     }
-    
+
     @Transactional
     public void addItemBatch(UUID listId, List<ShoppingListProductCreateRequestDto> items) {
         ShoppingList list = requireAccessibleList(listId);
@@ -90,7 +90,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
             if (!repository.existsByListIdAndProductId(listId, dto.getProductId())) {
                 Product product = productRepository.findById(dto.getProductId())
                         .orElseThrow(() -> new NotFoundException());
-                
+
                 ShoppingListProduct item = mapper.toEntity(dto);
                 item.setList(list);
                 item.setProduct(product);
@@ -98,7 +98,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
                 repository.save(item);
             }
         }
-        
+
         shoppingListService.checkAndAutoCloseList(listId);
     }
 
@@ -131,7 +131,7 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
 
         item = repository.save(item);
         shoppingListService.checkAndAutoCloseList(listId);
-        
+
         return mapper.toDto(item);
     }
 
@@ -141,9 +141,9 @@ public class ShoppingListProductService extends BaseService<ShoppingListProduct,
 
         item.setStatus(status);
         item = repository.save(item);
-        
+
         shoppingListService.checkAndAutoCloseList(listId);
-        
+
         return mapper.toDto(item);
     }
 

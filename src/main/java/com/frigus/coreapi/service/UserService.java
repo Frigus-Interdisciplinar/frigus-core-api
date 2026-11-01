@@ -46,6 +46,7 @@ public class UserService extends BaseService<User, UUID, UserRegisterRequestDto,
         User user = repository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Usuário não encontrado para reset de senha"));
         user.setHashPassword(passwordEncoder.encode(dto.getNewPassword()));
+        user.setTokenVersion(user.getTokenVersion() + 1);
         repository.save(user);
     }
 

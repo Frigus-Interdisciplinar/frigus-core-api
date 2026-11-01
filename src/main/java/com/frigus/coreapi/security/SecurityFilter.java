@@ -16,7 +16,6 @@ import com.frigus.coreapi.repository.UserRepository;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +39,7 @@ public class SecurityFilter extends OncePerRequestFilter {
                 
                 User user = userRepository.findById(UUID.fromString(userId)).orElse(null);
 
-                if (user != null) {
+                if (user != null && user.getDeletedAt()==null && tokenVersion(decodedJWT)==user.getTokenVersion()) {
                     var authorities = List.of(
                         new SimpleGrantedAuthority("ROLE_" + user.getRole().name()),
                         new SimpleGrantedAuthority("PLAN_" + switchPlanName(planName))
@@ -63,19 +62,12 @@ public class SecurityFilter extends OncePerRequestFilter {
             return authHeader.substring(7);
         }
 
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if ("accessToken".equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
-            }
-        }
-
         return null;
     } 
 
     // ! mudar para novos nomes qnd o 1o ano decidir
     private String switchPlanName(String rawPlanName) {
+        if(rawPlanName==null) return "DOMESTIC_FREE";
         switch (rawPlanName) {
             case "Frigus Free":
                 return "DOMESTIC_FREE";
@@ -90,5 +82,11 @@ public class SecurityFilter extends OncePerRequestFilter {
             default:
                 return "DOMESTIC_FREE";
         }
+    }
+
+    private int tokenVersion(DecodedJWT jwt) {
+        var claim=jwt.getClaim("tokenVersion");
+        Integer version=claim==null ? null : claim.asInt();
+        return version==null ? 0 : version;
     }
 }

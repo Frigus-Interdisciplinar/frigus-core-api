@@ -12,6 +12,7 @@ public class UserMapper implements BaseMapper<User, UserResponseDto, UserRegiste
         return UserResponseDto.builder()
                 .id(user.getId()).
                 name(user.getName()).
+                profilePictureUrl(user.getProfilePictureUrl()).
                 email(user.getEmail()).
                 accountType(user.getAccountType()).
                 birthDate(user.getBirthDate())
