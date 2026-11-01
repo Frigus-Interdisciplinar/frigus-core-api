@@ -19,6 +19,7 @@ import java.util.List;
 public class AiRecipeChatResponseDto {
     private String sessionId;
     private String chatMessage;
+    private List<Integer> recipeIds;
 
     private Integer recipeId;
     private String recipeName;

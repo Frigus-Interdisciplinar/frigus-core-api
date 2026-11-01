@@ -17,6 +17,7 @@ import java.util.List;
 public class FrigusAiRecipeResponse {
     private String sessionId;
     private String chatMessage;
+    private List<Integer> recipeIds;
     private String recipeName;
     private String description;
     private String instructions;
