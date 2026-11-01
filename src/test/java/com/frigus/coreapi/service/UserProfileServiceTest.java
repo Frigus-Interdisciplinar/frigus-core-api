@@ -1,6 +1,7 @@
 package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.user.*;
+import com.frigus.coreapi.enums.AccountType;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.UserMapper;
@@ -47,6 +48,34 @@ class UserProfileServiceTest {
         assertThat(user.getName()).isEqualTo("After");
         service.patchProfile(user, UserPatchRequestDto.builder().birthDate(LocalDate.of(1992, 3, 3)).build());
         assertThat(user.getBirthDate()).isEqualTo(LocalDate.of(1992, 3, 3));
+    }
+
+    @Test
+    void updatesAccountTypeOnlyWhilePlanSelectionIsRequired() {
+        user.setPlanSelectionRequired(true);
+        var request = UserAccountTypeUpdateDto.builder().accountType(AccountType.COMMERCIAL).build();
+        var response = UserResponseDto.builder().id(user.getId()).accountType(AccountType.COMMERCIAL).build();
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(repository.save(user)).thenReturn(user);
+        when(mapper.toDto(user)).thenReturn(response);
+
+        assertThat(service.updateOnboardingAccountType(user, request)).isSameAs(response);
+        assertThat(user.getAccountType()).isEqualTo(AccountType.COMMERCIAL);
+        verify(repository).save(user);
+    }
+
+    @Test
+    void rejectsAccountTypeChangesOutsideOnboardingOrWithPendingCheckout() {
+        var request = UserAccountTypeUpdateDto.builder().accountType(AccountType.COMMERCIAL).build();
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, request))
+                .isInstanceOf(BadRequestException.class);
+
+        user.setPlanSelectionRequired(true);
+        user.setPendingPlanTransactionId(UUID.randomUUID());
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, request))
+                .isInstanceOf(BadRequestException.class);
+        verify(repository, never()).save(any());
     }
 
     @Test

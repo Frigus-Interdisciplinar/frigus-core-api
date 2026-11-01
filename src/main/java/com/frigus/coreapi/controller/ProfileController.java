@@ -1,6 +1,7 @@
 package com.frigus.coreapi.controller;
 
 import com.frigus.coreapi.dto.user.UserChangePasswordRequestDto;
+import com.frigus.coreapi.dto.user.UserAccountTypeUpdateDto;
 import com.frigus.coreapi.dto.user.UserPatchRequestDto;
 import com.frigus.coreapi.dto.user.UserPutRequestDto;
 import com.frigus.coreapi.dto.user.UserResponseDto;
@@ -22,6 +23,13 @@ public class ProfileController {
     @GetMapping
     public UserResponseDto getProfile(@AuthenticationPrincipal User currentUser) {
         return profileService.getProfile(currentUser);
+    }
+
+    @PatchMapping("/onboarding/account-type")
+    public UserResponseDto updateOnboardingAccountType(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody UserAccountTypeUpdateDto dto) {
+        return profileService.updateOnboardingAccountType(currentUser, dto);
     }
 
     @PutMapping
