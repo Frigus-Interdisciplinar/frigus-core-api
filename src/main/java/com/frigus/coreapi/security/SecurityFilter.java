@@ -4,9 +4,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -24,9 +27,12 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class SecurityFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(SecurityFilter.class);
+
     private final TokenProvider tokenProvider;
     private final UserRepository userRepository;
     private final RefreshTokenService refreshTokenService;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -53,11 +59,25 @@ public class SecurityFilter extends OncePerRequestFilter {
                     if (sessionId != null) authentication.setDetails(sessionId.toString());
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+                    recordFirstDailyAccess(user.getId());
                 }
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void recordFirstDailyAccess(UUID userId) {
+        try {
+            jdbcTemplate.update("""
+                INSERT INTO dw.user_daily_access (user_id, access_date, first_access_at)
+                VALUES (?, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, access_date) DO NOTHING
+                """, userId);
+        } catch (RuntimeException ex) {
+            // Falha da metrica nao deve bloquear uma requisicao autenticada.
+            log.warn("Nao foi possivel registrar o acesso diario no Data Mart", ex);
+        }
     }
         
 

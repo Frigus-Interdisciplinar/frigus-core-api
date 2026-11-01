@@ -1,6 +1,7 @@
 package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.user.UserChangePasswordRequestDto;
+import com.frigus.coreapi.dto.user.UserAccountTypeUpdateDto;
 import com.frigus.coreapi.dto.user.UserPatchRequestDto;
 import com.frigus.coreapi.dto.user.UserPutRequestDto;
 import com.frigus.coreapi.dto.user.UserResponseDto;
@@ -24,6 +25,20 @@ public class UserProfileService {
 
     public UserResponseDto getProfile(User currentUser) {
         return mapper.toDto(currentUser);
+    }
+
+    public UserResponseDto updateOnboardingAccountType(
+            User currentUser,
+            UserAccountTypeUpdateDto dto) {
+        User user = repository.findById(currentUser.getId())
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Erro ao atualizar dados"));
+        if (!user.isPlanSelectionRequired() || user.getPendingPlanTransactionId() != null) {
+            throw new BadRequestException(
+                    "Etapa de cadastro indisponível",
+                    "Não é possível alterar o tipo de conta nesta etapa");
+        }
+        user.setAccountType(dto.getAccountType());
+        return mapper.toDto(repository.save(user));
     }
 
     public UserResponseDto updateProfile(User currentUser, UserPutRequestDto dto) {
