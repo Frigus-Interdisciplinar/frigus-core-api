@@ -14,7 +14,9 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -93,10 +95,11 @@ public class MoneySavingReportService {
         Long total = jdbc.queryForObject(EVENT_ROWS + "SELECT count(*) FROM events ev" + filter, params, Long.class);
         List<Row> rows = jdbc.query(EVENT_ROWS + "SELECT * FROM events ev" + filter +
                 " ORDER BY event_date DESC, sort_id DESC, kind DESC LIMIT :limit OFFSET :offset", params, (rs, n) -> row(rs));
+        Map<Long, List<MoneySavingDtos.CategoryAmount>> categoryAmounts = categoryAmounts(rows);
         List<MoneySavingDtos.Event> content = rows.stream().map(row -> new MoneySavingDtos.Event(
                 row.id(), row.kind(), row.date(), row.productName(), row.category(), row.categoryGroup(),
                 row.unit(), row.quantity(), row.amount(), row.verified(), included(row), row.reasonCode(),
-                categoryAmounts(row))).toList();
+                categoryAmounts(row, categoryAmounts))).toList();
         return new MoneySavingDtos.EventPage(content, total, page, size, (int) ((total + size - 1) / size));
     }
 
@@ -105,15 +108,37 @@ public class MoneySavingReportService {
                 (rs, n) -> row(rs));
     }
 
-    private List<MoneySavingDtos.CategoryAmount> categoryAmounts(Row row) {
+    private Map<Long, List<MoneySavingDtos.CategoryAmount>> categoryAmounts(List<Row> rows) {
+        List<Long> exitIds = rows.stream()
+                .filter(row -> row.id().startsWith("E:") && row.amount() != null)
+                .map(row -> Long.parseLong(row.id().substring(2)))
+                .distinct()
+                .toList();
+        if (exitIds.isEmpty()) return Map.of();
+
+        Map<Long, List<MoneySavingDtos.CategoryAmount>> amountsByExit = new HashMap<>();
+        jdbc.query("""
+                SELECT exit_id,category_group,sum(amount)
+                FROM money_allocations
+                WHERE exit_id IN (:exitIds) AND amount IS NOT NULL
+                GROUP BY exit_id,category_group ORDER BY exit_id,category_group
+                """, new MapSqlParameterSource("exitIds", exitIds), rs -> {
+            while (rs.next()) {
+                amountsByExit.computeIfAbsent(rs.getLong(1), ignored -> new ArrayList<>())
+                        .add(new MoneySavingDtos.CategoryAmount(rs.getString(2), rs.getBigDecimal(3)));
+            }
+            return null;
+        });
+        return amountsByExit;
+    }
+
+    private List<MoneySavingDtos.CategoryAmount> categoryAmounts(
+            Row row, Map<Long, List<MoneySavingDtos.CategoryAmount>> amountsByExit) {
         if (row.amount() == null) return List.of();
         if ("PURCHASE".equals(row.kind()))
             return List.of(new MoneySavingDtos.CategoryAmount(row.categoryGroup(), row.amount()));
         long exitId = Long.parseLong(row.id().substring(2));
-        return jdbc.getJdbcTemplate().query("""
-                SELECT category_group,sum(amount) FROM money_allocations
-                WHERE exit_id=? AND amount IS NOT NULL GROUP BY category_group ORDER BY category_group
-                """, (rs, n) -> new MoneySavingDtos.CategoryAmount(rs.getString(1), rs.getBigDecimal(2)), exitId);
+        return amountsByExit.getOrDefault(exitId, List.of());
     }
 
     private List<MoneySavingDtos.CategoryTotal> categoryTotals(UUID groupId, LocalDate from, LocalDate to) {

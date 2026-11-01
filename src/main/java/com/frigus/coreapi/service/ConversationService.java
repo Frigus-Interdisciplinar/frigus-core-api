@@ -31,8 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,9 +52,22 @@ public class ConversationService {
     public List<ConversationResponseDto> listMyConversations() {
         User currentUser = requireCurrentUser();
         List<Conversation> conversations = conversationRepository.findActiveConversationsByUserId(currentUser.getId());
+        if (conversations.isEmpty()) return List.of();
 
+        List<UUID> conversationIds = conversations.stream().map(Conversation::getId).toList();
+        Map<UUID, List<ConversationParticipant>> participantsByConversation =
+                conversationParticipantRepository.findActiveParticipantsByConversationIds(conversationIds).stream()
+                        .collect(Collectors.groupingBy(participant -> participant.getId().getConversationId()));
+        Map<UUID, Message> latestMessagesByConversation =
+                messageRepository.findLatestMessagesByConversationIds(conversationIds).stream()
+                        .collect(Collectors.toMap(
+                                message -> message.getConversationParticipants().getId().getConversationId(),
+                                message -> message));
         return conversations.stream()
-                .map(this::buildConversationResponseDto)
+                .map(conversation -> conversationMapper.toDto(
+                        conversation,
+                        participantsByConversation.getOrDefault(conversation.getId(), List.of()),
+                        latestMessagesByConversation.get(conversation.getId())))
                 .toList();
     }
 

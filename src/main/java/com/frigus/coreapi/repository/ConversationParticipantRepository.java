@@ -18,6 +18,11 @@ public interface ConversationParticipantRepository extends BaseRepository<Conver
            "WHERE cp.id.conversationId = :conversationId AND cp.leftAt IS NULL")
     List<ConversationParticipant> findActiveParticipantsByConversationId(@Param("conversationId") UUID conversationId);
 
+    @Query("SELECT cp FROM ConversationParticipant cp JOIN FETCH cp.user " +
+            "WHERE cp.id.conversationId IN :conversationIds AND cp.leftAt IS NULL")
+    List<ConversationParticipant> findActiveParticipantsByConversationIds(
+            @Param("conversationIds") List<UUID> conversationIds);
+
     @Query("SELECT CASE WHEN COUNT(cp) > 0 THEN true ELSE false END FROM ConversationParticipant cp " +
            "WHERE cp.id.conversationId = :conversationId AND cp.id.userId = :userId AND cp.leftAt IS NULL")
     boolean isUserActiveParticipant(@Param("conversationId") UUID conversationId, @Param("userId") UUID userId);
