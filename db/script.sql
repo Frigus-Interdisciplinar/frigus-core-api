@@ -1213,3 +1213,12 @@ BEGIN
  FROM user_groups ug CROSS JOIN products p WHERE ug.group_id=v_group_id AND p.id=NEW.product_id;
  RETURN NEW;
 END $$;
+
+-- Keep this bootstrap fixture aligned with the latest user schema migrations.
+-- V017__user_email_verification.sql
+ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- V018__user_plan_selection.sql
+ALTER TABLE users
+  ADD COLUMN plan_selection_required BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN pending_plan_transaction_id UUID;
