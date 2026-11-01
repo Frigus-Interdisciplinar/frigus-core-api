@@ -3,7 +3,6 @@ package com.frigus.coreapi.service;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,7 +18,7 @@ import org.springframework.util.DigestUtils;
 import com.frigus.coreapi.dto.transaction.CheckoutRequestDto;
 import com.frigus.coreapi.dto.transaction.TransactionQueuePayload;
 import com.frigus.coreapi.dto.transaction.TransactionResponseDto;
-import com.frigus.coreapi.enums.BillingInterval;
+import com.frigus.coreapi.enums.AccountType;
 import com.frigus.coreapi.enums.PaymentMethod;
 import com.frigus.coreapi.enums.SubscriptionStatus;
 import com.frigus.coreapi.enums.TransactionStatus;
@@ -36,6 +35,7 @@ import com.frigus.coreapi.repository.PlanRepository;
 import com.frigus.coreapi.repository.SubscriptionRepository;
 import com.frigus.coreapi.repository.TransactionEventRepository;
 import com.frigus.coreapi.repository.TransactionRepository;
+import com.frigus.coreapi.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +52,7 @@ public class TransactionService {
     private final SubscriptionRepository subscriptionRepository;
     private final TransactionEventRepository transactionEventRepository;
     private final TransactionMapper transactionMapper;
+    private final UserRepository userRepository;
 
     @Transactional
     public TransactionResponseDto checkout(User currentUser, CheckoutRequestDto dto) {
@@ -65,6 +66,16 @@ public class TransactionService {
 
         if (Boolean.FALSE.equals(plan.getActive()) || plan.getDeletedAt() != null) {
             throw new BadRequestException("Plano inativo", "Plano com o código " + dto.getPlanCode() + " não está disponível para assinaturas");
+        }
+
+        boolean compatibleAccount = switch (plan.getPlanCode()) {
+            case "COMMERCIAL" -> currentUser.getAccountType() == AccountType.COMMERCIAL;
+            case "ENTERPRISE" -> currentUser.getAccountType() == AccountType.BUSINESS;
+            case "PLUS", "FAMILY" -> currentUser.getAccountType() == null || currentUser.getAccountType() == AccountType.DOMESTIC;
+            default -> true;
+        };
+        if (!compatibleAccount) {
+            throw new BadRequestException("Plano incompatível", "Escolha um plano disponível para o seu tipo de conta.");
         }
 
         boolean isFreePlan = plan.getPrice() == null || plan.getPrice().compareTo(BigDecimal.ZERO) == 0;
@@ -126,6 +137,7 @@ public class TransactionService {
 
         if (isFreePlan) {
             Subscription subscription = handleFreeSubscription(transaction);
+            userRepository.completePlanSelection(currentUser.getId());
             transaction.setSubscription(subscription);
             transaction = transactionRepository.save(transaction);
 
@@ -133,6 +145,7 @@ public class TransactionService {
             return transactionMapper.toDto(transaction);
         }
 
+        userRepository.setPendingPlanTransaction(currentUser.getId(), transaction.getId());
         recordEvent(transaction, TransactionStatus.PENDING, "Transação criada e aguardando processamento na fila");
 
         TransactionQueuePayload payload = TransactionQueuePayload.builder()
@@ -196,6 +209,7 @@ public class TransactionService {
         transaction.setErrorMessage("Transação cancelada pelo usuário");
         transaction = transactionRepository.save(transaction);
 
+        userRepository.clearPendingPlanTransaction(currentUser.getId(), transaction.getId());
         recordEvent(transaction, TransactionStatus.CANCELED, "Transação cancelada pelo usuário");
 
         return transactionMapper.toDto(transaction);
@@ -212,11 +226,9 @@ public class TransactionService {
         subscription.setPlan(transaction.getPlan());
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setCurrentPeriodStart(Instant.now());
-        subscription.setCurrentPeriodEnd(
-                transaction.getPlan().getBillingInterval() == BillingInterval.YEARLY
-                        ? Instant.now().plus(365, ChronoUnit.DAYS)
-                        : Instant.now().plus(30, ChronoUnit.DAYS)
-        );
+        subscription.setCurrentPeriodEnd(null);
+        subscription.setCanceledAt(null);
+        subscription.setDeletedAt(null);
 
         return subscriptionRepository.save(subscription);
     }

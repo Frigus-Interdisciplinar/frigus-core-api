@@ -48,6 +48,16 @@ public class User {
     @Column(name = "email", nullable = false, length = Integer.MAX_VALUE)
     private String email;
 
+    @Builder.Default
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = true;
+
+    @Column(name = "plan_selection_required", nullable = false)
+    private boolean planSelectionRequired;
+
+    @Column(name = "pending_plan_transaction_id")
+    private UUID pendingPlanTransactionId;
+
     @Column(name = "hash_password", length = Integer.MAX_VALUE)
     private String hashPassword;
 

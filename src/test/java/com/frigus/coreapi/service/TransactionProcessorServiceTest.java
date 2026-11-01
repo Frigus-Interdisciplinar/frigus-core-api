@@ -13,6 +13,7 @@ import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.SubscriptionRepository;
 import com.frigus.coreapi.repository.TransactionEventRepository;
 import com.frigus.coreapi.repository.TransactionRepository;
+import com.frigus.coreapi.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,9 @@ class TransactionProcessorServiceTest {
 
     @Mock
     private TransactionEventRepository transactionEventRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private TransactionProcessorService processorService;
@@ -109,6 +113,7 @@ class TransactionProcessorServiceTest {
 
         verify(transactionEventRepository, atLeast(2)).save(any(TransactionEvent.class));
         verify(subscriptionRepository).save(any(Subscription.class));
+        verify(userRepository).completePlanSelection(user.getId());
     }
 
     @Test
@@ -249,8 +254,21 @@ class TransactionProcessorServiceTest {
         boolean shouldRetry = processorService.handleProcessingFailure(payload, "Falha fatal de conexao");
 
         assertThat(shouldRetry).isFalse();
+        verify(userRepository, never()).completePlanSelection(any());
+        verify(userRepository).clearPendingPlanTransaction(user.getId(), pendingTransaction.getId());
         assertThat(pendingTransaction.getStatus()).isEqualTo(TransactionStatus.ERROR);
         assertThat(pendingTransaction.getErrorMessage()).contains("Falha definitiva após 3 tentativas");
         verify(transactionEventRepository).save(any(TransactionEvent.class));
+    }
+
+    @Test
+    void keepsPlanSelectionRequiredWhenThePaymentIsRejected() {
+        var payload = TransactionQueuePayload.builder().transactionId(pendingTransaction.getId()).fakeCardLast4("0000").build();
+        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        processorService.processTransaction(payload);
+        assertThat(pendingTransaction.getStatus()).isEqualTo(TransactionStatus.REJECTED);
+        verify(userRepository, never()).completePlanSelection(any());
+        verify(userRepository).clearPendingPlanTransaction(user.getId(), pendingTransaction.getId());
+        verify(subscriptionRepository, never()).save(any());
     }
 }

@@ -69,11 +69,19 @@ public class GoogleTokenVerifierService {
                 throw new UnauthorizedException("Email não verificado", "O e-mail da conta Google não está verificado.");
             }
 
-            if (configuredClientId != null && !configuredClientId.isBlank()) {
-                String aud = root.path("aud").asText("");
-                if (!configuredClientId.equals(aud)) {
-                    log.warn("Audience do Google ({}) difere do configurado ({})", aud, configuredClientId);
-                }
+            if (configuredClientId == null || configuredClientId.isBlank()) {
+                throw new BadRequestException(
+                        "Login Google não configurado",
+                        "Configure o Client ID do Google no servidor antes de usar este login."
+                );
+            }
+
+            String audience = root.path("aud").asText("");
+            if (!configuredClientId.equals(audience)) {
+                throw new UnauthorizedException(
+                        "Token do Google inválido",
+                        "O token foi emitido para outro aplicativo."
+                );
             }
 
             return GoogleUserData.builder()

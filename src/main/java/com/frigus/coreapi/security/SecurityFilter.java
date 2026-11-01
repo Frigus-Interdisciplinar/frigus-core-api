@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserRepository;
+import com.frigus.coreapi.service.RefreshTokenService;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 public class SecurityFilter extends OncePerRequestFilter {
     private final TokenProvider tokenProvider;
     private final UserRepository userRepository;
+    private final RefreshTokenService refreshTokenService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -36,16 +38,19 @@ public class SecurityFilter extends OncePerRequestFilter {
             if (decodedJWT != null) {
                 String userId = decodedJWT.getSubject();
                 String planName = decodedJWT.getClaim("plan").asString();
+                java.util.UUID sessionId = tokenProvider.sessionId(decodedJWT);
                 
                 User user = userRepository.findById(UUID.fromString(userId)).orElse(null);
 
-                if (user != null && user.getDeletedAt()==null && tokenVersion(decodedJWT)==user.getTokenVersion()) {
+                boolean sessionActive = sessionId == null || refreshTokenService.touchSession(sessionId);
+                if (user != null && user.getDeletedAt()==null && tokenVersion(decodedJWT)==user.getTokenVersion() && sessionActive) {
                     var authorities = List.of(
                         new SimpleGrantedAuthority("ROLE_" + user.getRole().name()),
                         new SimpleGrantedAuthority("PLAN_" + switchPlanName(planName))
                     );
 
                     var authentication = new UsernamePasswordAuthenticationToken(user, null, authorities);
+                    if (sessionId != null) authentication.setDetails(sessionId.toString());
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }

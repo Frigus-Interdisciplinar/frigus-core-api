@@ -3,6 +3,7 @@ package com.frigus.coreapi.controller;
 import com.frigus.coreapi.dto.user.*;
 import com.frigus.coreapi.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -28,9 +29,15 @@ public class AuthController {
         return authService.register(body);
     }
 
-    @PostMapping("/login")
     public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body, HttpServletResponse response) {
         LoginResponseDto loginResponseDto = authService.login(body);
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
+        return loginResponseDto;
+    }
+
+    @PostMapping("/login")
+    public LoginResponseDto login(@Valid @RequestBody LoginRequestDto body, HttpServletResponse response, HttpServletRequest request) {
+        LoginResponseDto loginResponseDto = authService.login(body, request.getHeader("User-Agent"));
 
         setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
 
@@ -40,11 +47,23 @@ public class AuthController {
     @PostMapping("/google")
     public LoginResponseDto loginWithGoogle(
             @Valid @RequestBody GoogleLoginRequestDto body,
-            HttpServletResponse response) {
-        LoginResponseDto loginResponseDto = authService.loginWithGoogle(body);
+            HttpServletResponse response,
+            HttpServletRequest request) {
+        LoginResponseDto loginResponseDto = authService.loginWithGoogle(body, request.getHeader("User-Agent"));
 
         setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
 
+        return loginResponseDto;
+    }
+
+    public LoginResponseDto refresh(
+            @CookieValue(name = "refreshToken", required = false) String refreshTokenFromCookie,
+            @RequestBody(required = false) Map<String, String> body,
+            HttpServletResponse response) {
+
+        String refreshToken = resolveRefreshToken(refreshTokenFromCookie, body);
+        LoginResponseDto loginResponseDto = authService.refreshToken(refreshToken);
+        setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
         return loginResponseDto;
     }
 
@@ -52,13 +71,12 @@ public class AuthController {
     public LoginResponseDto refresh(
             @CookieValue(name = "refreshToken", required = false) String refreshTokenFromCookie,
             @RequestBody(required = false) Map<String, String> body,
-            HttpServletResponse response) {
+            HttpServletResponse response,
+            HttpServletRequest request) {
 
-        String refreshToken = (refreshTokenFromCookie != null && !refreshTokenFromCookie.isBlank())
-                ? refreshTokenFromCookie
-                : (body != null ? body.get("refreshToken") : null);
+        String refreshToken = resolveRefreshToken(refreshTokenFromCookie, body);
 
-        LoginResponseDto loginResponseDto = authService.refreshToken(refreshToken);
+        LoginResponseDto loginResponseDto = authService.refreshToken(refreshToken, request.getHeader("User-Agent"));
 
         setTokenCookies(response, loginResponseDto.getAccessToken(), loginResponseDto.getRefreshToken());
 
@@ -99,6 +117,12 @@ public class AuthController {
 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
+    }
+
+    private String resolveRefreshToken(String refreshTokenFromCookie, Map<String, String> body) {
+        return (refreshTokenFromCookie != null && !refreshTokenFromCookie.isBlank())
+                ? refreshTokenFromCookie
+                : (body != null ? body.get("refreshToken") : null);
     }
 
     private void clearTokenCookies(HttpServletResponse response) {

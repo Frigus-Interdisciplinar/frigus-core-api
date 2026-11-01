@@ -16,10 +16,12 @@ class UserMapperTest {
     @Test
     void mapsUsersInBothDirections() {
         User user = User.builder().id(UUID.randomUUID()).name("Ana").email("ana@frigus.com")
-                .birthDate(LocalDate.of(1990, 1, 1)).accountType(AccountType.DOMESTIC).build();
+                .birthDate(LocalDate.of(1990, 1, 1)).accountType(AccountType.DOMESTIC).planSelectionRequired(true).pendingPlanTransactionId(UUID.randomUUID()).build();
         var response = mapper.toDto(user);
         assertThat(response.getEmail()).isEqualTo(user.getEmail());
         assertThat(response.getAccountType()).isEqualTo(AccountType.DOMESTIC);
+        assertThat(response.isPlanSelectionRequired()).isTrue();
+        assertThat(response.getPendingPlanTransactionId()).isEqualTo(user.getPendingPlanTransactionId());
 
         var request = UserRegisterRequestDto.builder().name("Bia").email("bia@frigus.com")
                 .birthDate(LocalDate.of(1991, 2, 2)).build();

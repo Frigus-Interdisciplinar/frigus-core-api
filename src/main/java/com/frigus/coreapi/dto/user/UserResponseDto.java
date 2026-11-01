@@ -17,6 +17,9 @@ public class UserResponseDto {
     private String name;
     private String profilePictureUrl;
     private String email;
+    private boolean emailVerified;
+    private boolean planSelectionRequired;
+    private UUID pendingPlanTransactionId;
     private AccountType accountType;
 
     @JsonFormat(pattern = "dd/MM/yyyy")

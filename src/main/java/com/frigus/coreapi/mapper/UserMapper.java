@@ -14,6 +14,9 @@ public class UserMapper implements BaseMapper<User, UserResponseDto, UserRegiste
                 name(user.getName()).
                 profilePictureUrl(user.getProfilePictureUrl()).
                 email(user.getEmail()).
+                emailVerified(user.isEmailVerified()).
+                planSelectionRequired(user.isPlanSelectionRequired()).
+                pendingPlanTransactionId(user.getPendingPlanTransactionId()).
                 accountType(user.getAccountType()).
                 birthDate(user.getBirthDate())
                 .build();
