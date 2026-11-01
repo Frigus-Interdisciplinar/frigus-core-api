@@ -70,7 +70,6 @@ public class SecurityFilter extends OncePerRequestFilter {
         return null;
     } 
 
-    // ! mudar para novos nomes qnd o 1o ano decidir
     private String switchPlanName(String rawPlanName) {
         if(rawPlanName==null) return "DOMESTIC_FREE";
         switch (rawPlanName) {
