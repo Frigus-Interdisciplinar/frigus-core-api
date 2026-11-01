@@ -3,6 +3,7 @@ package com.frigus.coreapi.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.frigus.coreapi.exception.BadRequestException;
+import com.frigus.coreapi.exception.ServiceUnavailableException;
 import com.frigus.coreapi.exception.UnauthorizedException;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 @Slf4j
@@ -92,6 +94,12 @@ public class GoogleTokenVerifierService {
                     .emailVerified(emailVerified)
                     .build();
 
+        } catch (ResourceAccessException e) {
+            log.warn("Não foi possível conectar ao Google para validar o idToken: {}", e.getMessage());
+            throw new ServiceUnavailableException(
+                    "Serviço de validação do Google indisponível",
+                    "Não foi possível conectar ao Google. Tente novamente em instantes."
+            );
         } catch (HttpStatusCodeException e) {
             log.error("Erro HTTP ao validar idToken do Google: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new UnauthorizedException("Token do Google inválido ou expirado", "Não foi possível autenticar com o Google.");
