@@ -50,6 +50,35 @@ class UserProfileServiceTest {
     }
 
     @Test
+    void updatesAccountTypeWhilePlanSelectionIsPending() {
+        user.setPlanSelectionRequired(true);
+        var dto = UserAccountTypeUpdateDto.builder().accountType(com.frigus.coreapi.enums.AccountType.COMMERCIAL).build();
+        UserResponseDto response = UserResponseDto.builder().id(user.getId()).build();
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(repository.save(user)).thenReturn(user);
+        when(mapper.toDto(user)).thenReturn(response);
+
+        assertThat(service.updateOnboardingAccountType(user, dto)).isSameAs(response);
+        assertThat(user.getAccountType()).isEqualTo(com.frigus.coreapi.enums.AccountType.COMMERCIAL);
+        verify(repository).save(user);
+    }
+
+    @Test
+    void rejectsAccountTypeChangesAfterPlanSelectionOrDuringPendingPayment() {
+        var dto = UserAccountTypeUpdateDto.builder().accountType(com.frigus.coreapi.enums.AccountType.COMMERCIAL).build();
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, dto))
+                .isInstanceOf(BadRequestException.class);
+        verify(repository, never()).save(any());
+
+        user.setPlanSelectionRequired(true);
+        user.setPendingPlanTransactionId(UUID.randomUUID());
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, dto))
+                .isInstanceOf(BadRequestException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void handlesPasswordChangesAndMissingUsers() {
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("old", "hash")).thenReturn(true);
