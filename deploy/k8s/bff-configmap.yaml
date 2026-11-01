@@ -8,6 +8,6 @@ data:
   PORT: "3000"
   API_BASE_URL: http://core-api:80
   API_TIMEOUT_MS: "30000"
-  WEB_ORIGINS: https://app.seudominio.com
+  WEB_ORIGINS: ${FRONTEND_ORIGINS}
   SUPABASE_STORAGE_BUCKET: profile-picture
   SUPABASE_CHAT_BUCKET: chat-attachments

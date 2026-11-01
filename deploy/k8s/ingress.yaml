@@ -8,14 +8,14 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:sa-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID
+    alb.ingress.kubernetes.io/certificate-arn: ${ALB_CERTIFICATE_ARN}
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   ingressClassName: alb
   rules:
     # Point this DNS name to the ALB created by this Ingress.
-    - host: api.seudominio.com
+    - host: ${API_HOST}
       http:
         paths:
           - path: /

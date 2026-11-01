@@ -13,7 +13,7 @@ Consulta ao [workitem F2O-163](https://frigus-inter-2o.atlassian.net/browse/F2O-
 
 ## Deploy
 
-Configure `API_HOST`, `ALB_CERTIFICATE_ARN`, `FRONTEND_ORIGINS` e `TRUSTED_PROXY_CIDRS` no ambiente de execução do script. A última variável deve conter somente as faixas reais do ALB/ingress; não use a faixa de todos os clientes. O certificado ACM deve cobrir `API_HOST`. O `.env` local deve conter, além dos segredos já existentes, `FRIGUS_AI_BASE_URL`, `FRIGUS_AI_API_KEY` e `AD_CLICK_REPORT_SECRET`. O script aplica o Ingress com HTTP 80 redirecionado para HTTPS 443 e o certificado indicado.
+Configure `API_HOST`, `ALB_CERTIFICATE_ARN`, `FRONTEND_ORIGINS`, `APP_FRONTEND_URL` e `SECURITY_TRUSTED_PROXY_CIDRS` no `core-api/deploy/aws/prod.env`, a partir de `prod.env.example`. O último valor deve conter somente os CIDRs reais das subnets do ALB; não use a faixa de todos os clientes. O certificado ACM deve cobrir `API_HOST` e estar na mesma região do ALB. As credenciais da Core API ficam em `core-api/.env.production`; o deploy usa também `bff/.env.production` para as credenciais do Supabase. Veja o fluxo completo em `deploy/k8s/README.md`.
 
 Execute `db/migrations/005_add_discard_quantity.sql` antes de publicar a versão. Registros antigos mantêm `quantity` nulo porque o esquema anterior não armazenava essa informação; novos descartes gravam a quantidade informada.
 
