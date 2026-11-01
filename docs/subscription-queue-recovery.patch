@@ -1,0 +1,486 @@
+diff --git a/src/main/java/com/frigus/coreapi/repository/TransactionRepository.java b/src/main/java/com/frigus/coreapi/repository/TransactionRepository.java
+index f897db8b5bc2a1c3c29a379dd03bf6f2c4614344..f49ab4d6cd0e756a45ff5a02c1ab798627e57b6a 100644
+--- a/src/main/java/com/frigus/coreapi/repository/TransactionRepository.java
++++ b/src/main/java/com/frigus/coreapi/repository/TransactionRepository.java
+@@ -5,11 +5,19 @@ import java.util.UUID;
+ 
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import jakarta.persistence.LockModeType;
+ 
+ import com.frigus.coreapi.enums.TransactionStatus;
+ import com.frigus.coreapi.model.Transaction;
+ 
+ public interface TransactionRepository extends BaseRepository<Transaction, UUID> {
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select t from Transaction t where t.id = :id")
++    Optional<Transaction> findByIdForUpdate(@Param("id") UUID id);
++
+     Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
+     Page<Transaction> findByUserId(UUID userId, Pageable pageable);
+     Page<Transaction> findByUserIdAndStatus(UUID userId, TransactionStatus status, Pageable pageable);
+diff --git a/src/main/java/com/frigus/coreapi/service/TransactionProcessorService.java b/src/main/java/com/frigus/coreapi/service/TransactionProcessorService.java
+index 6023c068a2a788c1d1c97c73f6f6821af728895b..09afe9f424ac98ed34c7bd7a066483ef0b9b74d7 100644
+--- a/src/main/java/com/frigus/coreapi/service/TransactionProcessorService.java
++++ b/src/main/java/com/frigus/coreapi/service/TransactionProcessorService.java
+@@ -6,6 +6,7 @@ import java.util.UUID;
+ 
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.annotation.Propagation;
+ 
+ import com.frigus.coreapi.dto.transaction.TransactionQueuePayload;
+ import com.frigus.coreapi.enums.BillingInterval;
+@@ -32,7 +33,7 @@ public class TransactionProcessorService {
+ 
+     @Transactional
+     public void processTransaction(TransactionQueuePayload payload) {
+-        Transaction transaction = transactionRepository.findById(payload.getTransactionId())
++        Transaction transaction = transactionRepository.findByIdForUpdate(payload.getTransactionId())
+                 .orElse(null);
+ 
+         if (transaction == null || transaction.getStatus() != TransactionStatus.PENDING) {
+@@ -81,17 +82,19 @@ public class TransactionProcessorService {
+         log.info("Transação id={} aprovada com sucesso para o usuário id={}", transaction.getId(), transaction.getUser().getId());
+     }
+ 
+-    @Transactional
++    @Transactional(propagation = Propagation.REQUIRES_NEW)
+     public boolean handleProcessingFailure(TransactionQueuePayload payload, String errorMessage) {
+-        Transaction transaction = transactionRepository.findById(payload.getTransactionId())
++        Transaction transaction = transactionRepository.findByIdForUpdate(payload.getTransactionId())
+                 .orElse(null);
+ 
+-        if (transaction == null) {
++        if (transaction == null || transaction.getStatus() != TransactionStatus.PENDING) {
+             return false;
+         }
+ 
+-        int attempts = transaction.getAttempts() == null ? 1 : transaction.getAttempts();
++        // processTransaction rolled back its attempt counter with the failed work.
++        int attempts = (transaction.getAttempts() == null ? 0 : transaction.getAttempts()) + 1;
+         int maxAttempts = transaction.getMaxAttempts() == null ? 3 : transaction.getMaxAttempts();
++        transaction.setAttempts(attempts);
+ 
+         if (attempts >= maxAttempts) {
+             transaction.setStatus(TransactionStatus.ERROR);
+@@ -99,24 +102,18 @@ public class TransactionProcessorService {
+             transaction.setErrorMessage("Falha definitiva após " + attempts + " tentativas: " + errorMessage);
+             transactionRepository.save(transaction);
+ 
+-            if (transaction.getSubscription() != null) {
+-                Subscription sub = transaction.getSubscription();
+-                sub.setStatus(SubscriptionStatus.DELINQUENT);
+-                sub.setUpdatedAt(Instant.now());
+-                subscriptionRepository.save(sub);
+-            }
+-
+             recordEvent(transaction, TransactionStatus.ERROR, transaction.getErrorMessage());
+             log.error("Transação id={} atingiu limite de tentativas ({}) e foi marcada como ERROR", transaction.getId(), maxAttempts);
+             return false;
+         }
+ 
++        transactionRepository.save(transaction);
+         log.warn("Transação id={} falhou (tentativa {}/{}). Será re-enfileirada.", transaction.getId(), attempts, maxAttempts);
+         return true;
+     }
+ 
+     private Subscription handleSubscription(Transaction transaction) {
+-        Subscription subscription = subscriptionRepository.findByUserId(transaction.getUser().getId())
++        Subscription subscription = subscriptionRepository.findByUserIdAndDeletedAtIsNull(transaction.getUser().getId())
+                 .orElseGet(() -> Subscription.builder()
+                         .user(transaction.getUser())
+                         .startedAt(Instant.now())
+diff --git a/src/main/java/com/frigus/coreapi/service/TransactionService.java b/src/main/java/com/frigus/coreapi/service/TransactionService.java
+index 327dca61b7f33371a7d90657cb7bea01e279d510..be852db6a17074209cb77164860943688e867fb7 100644
+--- a/src/main/java/com/frigus/coreapi/service/TransactionService.java
++++ b/src/main/java/com/frigus/coreapi/service/TransactionService.java
+@@ -202,7 +202,7 @@ public class TransactionService {
+     }
+ 
+     private Subscription handleFreeSubscription(Transaction transaction) {
+-        Subscription subscription = subscriptionRepository.findByUserId(transaction.getUser().getId())
++        Subscription subscription = subscriptionRepository.findByUserIdAndDeletedAtIsNull(transaction.getUser().getId())
+                 .orElseGet(() -> Subscription.builder()
+                         .user(transaction.getUser())
+                         .startedAt(Instant.now())
+diff --git a/src/test/java/com/frigus/coreapi/service/TransactionProcessorServiceTest.java b/src/test/java/com/frigus/coreapi/service/TransactionProcessorServiceTest.java
+index 049644437ccd7b3bcf566be9ad9aa94407adcc07..bf43352c88326755593af574a148e28ee8d5fb75 100644
+--- a/src/test/java/com/frigus/coreapi/service/TransactionProcessorServiceTest.java
++++ b/src/test/java/com/frigus/coreapi/service/TransactionProcessorServiceTest.java
+@@ -95,8 +95,8 @@ class TransactionProcessorServiceTest {
+                 .fakeCardLast4("1234")
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.empty());
+         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+ 
+         processorService.processTransaction(payload);
+@@ -122,8 +122,8 @@ class TransactionProcessorServiceTest {
+                 .fakeCardLast4("1234")
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.empty());
+         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+ 
+         processorService.processTransaction(payload);
+@@ -153,8 +153,8 @@ class TransactionProcessorServiceTest {
+                 .fakeCardLast4("1234")
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existingActiveSub));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.of(existingActiveSub));
+         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+ 
+         processorService.processTransaction(payload);
+@@ -172,7 +172,7 @@ class TransactionProcessorServiceTest {
+                 .fakeCardLast4("0000")
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+ 
+         processorService.processTransaction(payload);
+ 
+@@ -191,7 +191,7 @@ class TransactionProcessorServiceTest {
+                 .fakePixKey("recusar@chave.com")
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+ 
+         processorService.processTransaction(payload);
+ 
+@@ -208,7 +208,7 @@ class TransactionProcessorServiceTest {
+                 .transactionId(pendingTransaction.getId())
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+ 
+         processorService.processTransaction(payload);
+ 
+@@ -219,32 +219,34 @@ class TransactionProcessorServiceTest {
+     @Test
+     @DisplayName("handleProcessingFailure deve retornar true quando attempts < maxAttempts")
+     void shouldReturnTrueWhenAttemptsUnderMax() {
+-        pendingTransaction.setAttempts(1);
++        pendingTransaction.setAttempts(0);
+         pendingTransaction.setMaxAttempts(3);
+ 
+         TransactionQueuePayload payload = TransactionQueuePayload.builder()
+                 .transactionId(pendingTransaction.getId())
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+ 
+         boolean shouldRetry = processorService.handleProcessingFailure(payload, "Timeout de banco");
+ 
+         assertThat(shouldRetry).isTrue();
++        assertThat(pendingTransaction.getAttempts()).isEqualTo(1);
++        verify(transactionRepository).save(pendingTransaction);
+         assertThat(pendingTransaction.getStatus()).isEqualTo(TransactionStatus.PENDING);
+     }
+ 
+     @Test
+     @DisplayName("handleProcessingFailure deve marcar status como ERROR quando atingir maxAttempts")
+     void shouldMarkAsErrorWhenAttemptsReachMax() {
+-        pendingTransaction.setAttempts(3);
++        pendingTransaction.setAttempts(2);
+         pendingTransaction.setMaxAttempts(3);
+ 
+         TransactionQueuePayload payload = TransactionQueuePayload.builder()
+                 .transactionId(pendingTransaction.getId())
+                 .build();
+ 
+-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
++        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+ 
+         boolean shouldRetry = processorService.handleProcessingFailure(payload, "Falha fatal de conexao");
+ 
+diff --git a/src/test/java/com/frigus/coreapi/service/TransactionServiceTest.java b/src/test/java/com/frigus/coreapi/service/TransactionServiceTest.java
+index 74b8a2155158455b117a466f733b626c8791cb26..08b1cac5716b07533bb2258359dec250e844f4d6 100644
+--- a/src/test/java/com/frigus/coreapi/service/TransactionServiceTest.java
++++ b/src/test/java/com/frigus/coreapi/service/TransactionServiceTest.java
+@@ -207,7 +207,7 @@ class TransactionServiceTest {
+         when(planRepository.findByPlanCode("FREE")).thenReturn(Optional.of(freePlan));
+         when(transactionRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+         when(transactionRepository.save(any(Transaction.class))).thenReturn(freeTx);
+-        when(subscriptionRepository.findByUserId(currentUser.getId())).thenReturn(Optional.empty());
++        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(Optional.empty());
+         when(subscriptionRepository.save(any(Subscription.class))).thenReturn(freeSub);
+         when(transactionMapper.toDto(freeTx)).thenReturn(responseDto);
+ 
+
+diff --git a/src/test/java/com/frigus/coreapi/service/TransactionQueueRecoveryTest.java b/src/test/java/com/frigus/coreapi/service/TransactionQueueRecoveryTest.java
+new file mode 100644
+--- /dev/null
++++ b/src/test/java/com/frigus/coreapi/service/TransactionQueueRecoveryTest.java
+@@ -0,0 +1,255 @@
++package com.frigus.coreapi.service;
++
++import com.frigus.coreapi.dto.transaction.TransactionQueuePayload;
++import com.frigus.coreapi.enums.BillingInterval;
++import com.frigus.coreapi.enums.SubscriptionStatus;
++import com.frigus.coreapi.enums.TransactionStatus;
++import com.frigus.coreapi.model.Plan;
++import com.frigus.coreapi.model.Subscription;
++import com.frigus.coreapi.model.Transaction;
++import com.frigus.coreapi.model.TransactionEvent;
++import com.frigus.coreapi.model.User;
++import com.frigus.coreapi.repository.SubscriptionRepository;
++import com.frigus.coreapi.repository.TransactionEventRepository;
++import com.frigus.coreapi.repository.TransactionRepository;
++import org.h2.jdbcx.JdbcDataSource;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.EnumSource;
++import org.springframework.aop.framework.ProxyFactory;
++import org.springframework.dao.IncorrectResultSizeDataAccessException;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.datasource.DataSourceTransactionManager;
++import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
++import org.springframework.transaction.interceptor.TransactionInterceptor;
++
++import java.math.BigDecimal;
++import java.sql.Timestamp;
++import java.time.Instant;
++import java.util.List;
++import java.util.UUID;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.Mockito.*;
++
++/**
++ * Real JDBC commits/rollbacks and Spring transaction interception; repositories use
++ * small H2-backed fixtures so no production database or scheduled worker is touched.
++ * The subscription fixture models the existing derived DeletedAtIsNull query.
++ */
++class TransactionQueueRecoveryTest {
++    private JdbcTemplate jdbc;
++    private TransactionRepository transactions;
++    private SubscriptionRepository subscriptions;
++    private TransactionEventRepository events;
++    private TransactionProcessorService processor;
++    private final Plan plan = Plan.builder().id(1).planCode("PLUS")
++            .price(new BigDecimal("19.90")).billingInterval(BillingInterval.MONTHLY).build();
++
++    @BeforeEach
++    void prepareTransactionalFixtures() {
++        JdbcDataSource dataSource = new JdbcDataSource();
++        dataSource.setURL("jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
++        jdbc = new JdbcTemplate(dataSource);
++        jdbc.execute("create table queue_transactions (id varchar(36) primary key, user_id varchar(36), "
++                + "status varchar(24), attempts int, max_attempts int, subscription_id varchar(36))");
++        jdbc.execute("create table queue_subscriptions (id varchar(36) primary key, user_id varchar(36), "
++                + "status varchar(24), deleted_at timestamp)");
++        jdbc.execute("create table queue_events (transaction_id varchar(36), status varchar(24))");
++        transactions = mock(TransactionRepository.class);
++        subscriptions = mock(SubscriptionRepository.class);
++        events = mock(TransactionEventRepository.class);
++
++        when(transactions.findByIdForUpdate(any())).thenAnswer(invocation -> {
++            UUID id = invocation.getArgument(0);
++            return jdbc.query("select * from queue_transactions where id = ? for update", (rs, row) -> {
++                String subscriptionId = rs.getString("subscription_id");
++                Subscription subscription = subscriptionId == null ? null : Subscription.builder()
++                        .id(UUID.fromString(subscriptionId)).status(SubscriptionStatus.ACTIVE).build();
++                return Transaction.builder().id(id)
++                        .user(User.builder().id(UUID.fromString(rs.getString("user_id"))).build())
++                        .plan(plan).status(TransactionStatus.valueOf(rs.getString("status")))
++                        .attempts(rs.getInt("attempts")).maxAttempts(rs.getInt("max_attempts"))
++                        .subscription(subscription).build();
++            }, id.toString()).stream().findFirst();
++        });
++        when(transactions.save(any(Transaction.class))).thenAnswer(invocation -> {
++            Transaction transaction = invocation.getArgument(0);
++            jdbc.update("update queue_transactions set status = ?, attempts = ? where id = ?",
++                    transaction.getStatus().name(), transaction.getAttempts(), transaction.getId().toString());
++            return transaction;
++        });
++        when(events.save(any(TransactionEvent.class))).thenAnswer(invocation -> {
++            TransactionEvent event = invocation.getArgument(0);
++            jdbc.update("insert into queue_events values (?, ?)", event.getTransaction().getId().toString(),
++                    event.getStatus().name());
++            return event;
++        });
++        when(subscriptions.findByUserIdAndDeletedAtIsNull(any())).thenAnswer(invocation -> {
++            UUID userId = invocation.getArgument(0);
++            List<Subscription> matches = jdbc.query(
++                    "select * from queue_subscriptions where user_id = ? and deleted_at is null",
++                    (rs, row) -> Subscription.builder().id(UUID.fromString(rs.getString("id")))
++                            .user(User.builder().id(userId).build()).plan(plan)
++                            .status(SubscriptionStatus.valueOf(rs.getString("status"))).build(),
++                    userId.toString());
++            if (matches.size() > 1) {
++                throw new IncorrectResultSizeDataAccessException(1, matches.size());
++            }
++            return matches.stream().findFirst();
++        });
++        // lenient because the ambiguity tests must not reach any subscription write.
++        lenient().when(subscriptions.save(any(Subscription.class))).thenAnswer(invocation -> invocation.getArgument(0));
++
++        TransactionInterceptor interceptor = new TransactionInterceptor();
++        interceptor.setTransactionManager(new DataSourceTransactionManager(dataSource));
++        interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
++        ProxyFactory proxy = new ProxyFactory(new TransactionProcessorService(transactions, subscriptions, events));
++        proxy.addAdvice(interceptor);
++        processor = (TransactionProcessorService) proxy.getProxy();
++    }
++
++    @Test
++    void oneLiveAndOneDeletedSubscriptionSelectsOnlyLiveRecord() {
++        UUID owner = UUID.randomUUID();
++        UUID liveId = subscription(owner, SubscriptionStatus.ACTIVE, false);
++        subscription(owner, SubscriptionStatus.EXPIRED, true);
++        UUID id = transaction(owner, null);
++
++        processor.processTransaction(payload(id));
++
++        assertThat(status(id)).isEqualTo("APPROVED");
++        assertThat(attempts(id)).isEqualTo(1);
++        var written = org.mockito.ArgumentCaptor.forClass(Subscription.class);
++        verify(subscriptions).save(written.capture());
++        assertThat(written.getValue().getId()).isEqualTo(liveId);
++        verify(subscriptions).findByUserIdAndDeletedAtIsNull(owner);
++        verify(subscriptions, never()).findByUserId(any());
++    }
++
++    @Test
++    void ambiguousSubscriptionsRollBackAndFailuresCommitUntilExactlyThreeThenStop() {
++        UUID owner = UUID.randomUUID();
++        UUID activeId = subscription(owner, SubscriptionStatus.ACTIVE, false);
++        subscription(owner, SubscriptionStatus.ACTIVE, false);
++        UUID id = transaction(owner, activeId);
++
++        for (int attempt = 1; attempt <= 3; attempt++) {
++            assertThatThrownBy(() -> processor.processTransaction(payload(id)))
++                    .isInstanceOf(IncorrectResultSizeDataAccessException.class);
++            // Both the PROCESSING status and its counter/event were rolled back.
++            assertThat(status(id)).isEqualTo("PENDING");
++            assertThat(attempts(id)).isEqualTo(attempt - 1);
++            assertThat(eventCount(id)).isZero();
++
++            boolean retry = processor.handleProcessingFailure(payload(id), "ambiguous subscription");
++            assertThat(retry).isEqualTo(attempt < 3);
++            assertThat(attempts(id)).isEqualTo(attempt);
++        }
++
++        assertThat(status(id)).isEqualTo("ERROR");
++        assertThat(eventCount(id)).isEqualTo(1);
++        assertThat(jdbc.queryForObject("select status from queue_subscriptions where id = ?",
++                String.class, activeId.toString())).isEqualTo("ACTIVE");
++        verify(subscriptions, never()).save(any());
++        processor.processTransaction(payload(id));
++        assertThat(processor.handleProcessingFailure(payload(id), "late duplicate")).isFalse();
++        assertThat(attempts(id)).isEqualTo(3);
++        assertThat(eventCount(id)).isEqualTo(1);
++    }
++
++    @Test
++    void differentQueuedTransactionIdsKeepIndependentDurableFailureBudgets() {
++        UUID firstOwner = UUID.randomUUID();
++        UUID secondOwner = UUID.randomUUID();
++        for (UUID owner : List.of(firstOwner, secondOwner)) {
++            subscription(owner, SubscriptionStatus.ACTIVE, false);
++            subscription(owner, SubscriptionStatus.CANCELED, false);
++        }
++        UUID first = transaction(firstOwner, null);
++        UUID second = transaction(secondOwner, null);
++
++        failAndRecord(first);
++        failAndRecord(second);
++        failAndRecord(first);
++
++        assertThat(attempts(first)).isEqualTo(2);
++        assertThat(attempts(second)).isEqualTo(1);
++        assertThat(status(first)).isEqualTo("PENDING");
++        assertThat(status(second)).isEqualTo("PENDING");
++        verify(subscriptions, never()).save(any());
++        verify(subscriptions, times(2)).findByUserIdAndDeletedAtIsNull(firstOwner);
++        verify(subscriptions).findByUserIdAndDeletedAtIsNull(secondOwner);
++    }
++
++    @ParameterizedTest
++    @EnumSource(value = TransactionStatus.class, names = {"APPROVED", "REJECTED", "ERROR", "CANCELED", "PROCESSING"})
++    void lateFailureOrQueueReplayDoesNotModifyNonPendingTransaction(TransactionStatus status) {
++        UUID id = transaction(UUID.randomUUID(), null);
++        jdbc.update("update queue_transactions set status = ?, attempts = 2 where id = ?",
++                status.name(), id.toString());
++
++        processor.processTransaction(payload(id));
++        assertThat(processor.handleProcessingFailure(payload(id), "late failure")).isFalse();
++
++        assertThat(status(id)).isEqualTo(status.name());
++        assertThat(attempts(id)).isEqualTo(2);
++        assertThat(eventCount(id)).isZero();
++        verifyNoInteractions(subscriptions);
++    }
++
++    @Test
++    void explicitGatewayRejectionKeepsExistingDelinquentRule() {
++        UUID owner = UUID.randomUUID();
++        UUID activeId = subscription(owner, SubscriptionStatus.ACTIVE, false);
++        UUID id = transaction(owner, activeId);
++        TransactionQueuePayload payload = TransactionQueuePayload.builder().transactionId(id)
++                .fakeCardLast4("0000").build();
++
++        processor.processTransaction(payload);
++
++        assertThat(status(id)).isEqualTo("REJECTED");
++        var written = org.mockito.ArgumentCaptor.forClass(Subscription.class);
++        verify(subscriptions).save(written.capture());
++        assertThat(written.getValue().getStatus()).isEqualTo(SubscriptionStatus.DELINQUENT);
++    }
++
++    private void failAndRecord(UUID id) {
++        assertThatThrownBy(() -> processor.processTransaction(payload(id)))
++                .isInstanceOf(IncorrectResultSizeDataAccessException.class);
++        assertThat(processor.handleProcessingFailure(payload(id), "ambiguous subscription")).isTrue();
++    }
++
++    private UUID transaction(UUID owner, UUID subscriptionId) {
++        UUID id = UUID.randomUUID();
++        jdbc.update("insert into queue_transactions values (?, ?, 'PENDING', 0, 3, ?)",
++                id.toString(), owner.toString(), subscriptionId == null ? null : subscriptionId.toString());
++        return id;
++    }
++
++    private UUID subscription(UUID owner, SubscriptionStatus status, boolean deleted) {
++        UUID id = UUID.randomUUID();
++        jdbc.update("insert into queue_subscriptions values (?, ?, ?, ?)", id.toString(), owner.toString(),
++                status.name(), deleted ? Timestamp.from(Instant.now()) : null);
++        return id;
++    }
++
++    private TransactionQueuePayload payload(UUID id) {
++        return TransactionQueuePayload.builder().transactionId(id).fakeCardLast4("4242").build();
++    }
++
++    private int attempts(UUID id) {
++        return jdbc.queryForObject("select attempts from queue_transactions where id = ?", Integer.class, id.toString());
++    }
++
++    private String status(UUID id) {
++        return jdbc.queryForObject("select status from queue_transactions where id = ?", String.class, id.toString());
++    }
++
++    private int eventCount(UUID id) {
++        return jdbc.queryForObject("select count(*) from queue_events where transaction_id = ?", Integer.class, id.toString());
++    }
++}

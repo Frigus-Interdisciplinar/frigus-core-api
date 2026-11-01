@@ -95,8 +95,8 @@ class TransactionProcessorServiceTest {
                 .fakeCardLast4("1234")
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.empty());
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
         processorService.processTransaction(payload);
@@ -122,8 +122,8 @@ class TransactionProcessorServiceTest {
                 .fakeCardLast4("1234")
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.empty());
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
         processorService.processTransaction(payload);
@@ -153,8 +153,8 @@ class TransactionProcessorServiceTest {
                 .fakeCardLast4("1234")
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
-        when(subscriptionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existingActiveSub));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(user.getId())).thenReturn(Optional.of(existingActiveSub));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
         processorService.processTransaction(payload);
@@ -172,7 +172,7 @@ class TransactionProcessorServiceTest {
                 .fakeCardLast4("0000")
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
 
         processorService.processTransaction(payload);
 
@@ -191,7 +191,7 @@ class TransactionProcessorServiceTest {
                 .fakePixKey("recusar@chave.com")
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
 
         processorService.processTransaction(payload);
 
@@ -208,7 +208,7 @@ class TransactionProcessorServiceTest {
                 .transactionId(pendingTransaction.getId())
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
 
         processorService.processTransaction(payload);
 
@@ -219,32 +219,34 @@ class TransactionProcessorServiceTest {
     @Test
     @DisplayName("handleProcessingFailure deve retornar true quando attempts < maxAttempts")
     void shouldReturnTrueWhenAttemptsUnderMax() {
-        pendingTransaction.setAttempts(1);
+        pendingTransaction.setAttempts(0);
         pendingTransaction.setMaxAttempts(3);
 
         TransactionQueuePayload payload = TransactionQueuePayload.builder()
                 .transactionId(pendingTransaction.getId())
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
 
         boolean shouldRetry = processorService.handleProcessingFailure(payload, "Timeout de banco");
 
         assertThat(shouldRetry).isTrue();
+        assertThat(pendingTransaction.getAttempts()).isEqualTo(1);
+        verify(transactionRepository).save(pendingTransaction);
         assertThat(pendingTransaction.getStatus()).isEqualTo(TransactionStatus.PENDING);
     }
 
     @Test
     @DisplayName("handleProcessingFailure deve marcar status como ERROR quando atingir maxAttempts")
     void shouldMarkAsErrorWhenAttemptsReachMax() {
-        pendingTransaction.setAttempts(3);
+        pendingTransaction.setAttempts(2);
         pendingTransaction.setMaxAttempts(3);
 
         TransactionQueuePayload payload = TransactionQueuePayload.builder()
                 .transactionId(pendingTransaction.getId())
                 .build();
 
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
 
         boolean shouldRetry = processorService.handleProcessingFailure(payload, "Falha fatal de conexao");
 

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import com.frigus.coreapi.dto.transaction.TransactionQueuePayload;
 import com.frigus.coreapi.enums.BillingInterval;
@@ -32,7 +33,7 @@ public class TransactionProcessorService {
 
     @Transactional
     public void processTransaction(TransactionQueuePayload payload) {
-        Transaction transaction = transactionRepository.findById(payload.getTransactionId())
+        Transaction transaction = transactionRepository.findByIdForUpdate(payload.getTransactionId())
                 .orElse(null);
 
         if (transaction == null || transaction.getStatus() != TransactionStatus.PENDING) {
@@ -81,17 +82,19 @@ public class TransactionProcessorService {
         log.info("Transação id={} aprovada com sucesso para o usuário id={}", transaction.getId(), transaction.getUser().getId());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean handleProcessingFailure(TransactionQueuePayload payload, String errorMessage) {
-        Transaction transaction = transactionRepository.findById(payload.getTransactionId())
+        Transaction transaction = transactionRepository.findByIdForUpdate(payload.getTransactionId())
                 .orElse(null);
 
-        if (transaction == null) {
+        if (transaction == null || transaction.getStatus() != TransactionStatus.PENDING) {
             return false;
         }
 
-        int attempts = transaction.getAttempts() == null ? 1 : transaction.getAttempts();
+        // processTransaction rolled back its attempt counter with the failed work.
+        int attempts = (transaction.getAttempts() == null ? 0 : transaction.getAttempts()) + 1;
         int maxAttempts = transaction.getMaxAttempts() == null ? 3 : transaction.getMaxAttempts();
+        transaction.setAttempts(attempts);
 
         if (attempts >= maxAttempts) {
             transaction.setStatus(TransactionStatus.ERROR);
@@ -99,24 +102,18 @@ public class TransactionProcessorService {
             transaction.setErrorMessage("Falha definitiva após " + attempts + " tentativas: " + errorMessage);
             transactionRepository.save(transaction);
 
-            if (transaction.getSubscription() != null) {
-                Subscription sub = transaction.getSubscription();
-                sub.setStatus(SubscriptionStatus.DELINQUENT);
-                sub.setUpdatedAt(Instant.now());
-                subscriptionRepository.save(sub);
-            }
-
             recordEvent(transaction, TransactionStatus.ERROR, transaction.getErrorMessage());
             log.error("Transação id={} atingiu limite de tentativas ({}) e foi marcada como ERROR", transaction.getId(), maxAttempts);
             return false;
         }
 
+        transactionRepository.save(transaction);
         log.warn("Transação id={} falhou (tentativa {}/{}). Será re-enfileirada.", transaction.getId(), attempts, maxAttempts);
         return true;
     }
 
     private Subscription handleSubscription(Transaction transaction) {
-        Subscription subscription = subscriptionRepository.findByUserId(transaction.getUser().getId())
+        Subscription subscription = subscriptionRepository.findByUserIdAndDeletedAtIsNull(transaction.getUser().getId())
                 .orElseGet(() -> Subscription.builder()
                         .user(transaction.getUser())
                         .startedAt(Instant.now())
