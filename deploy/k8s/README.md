@@ -7,17 +7,21 @@ O deploy publica os dois containers no ECR e atualiza os deployments no EKS. O B
 Antes do primeiro deploy, tenha:
 
 - Conta AWS e permissões para EKS, IAM, ECR e Elastic Load Balancing.
-- EKS na região escolhida, com nós capazes de baixar imagens do ECR. O exemplo em `cluster.yaml` cria `frigus-prod` em `sa-east-1` com dois nós `t3.medium`; revise capacidade e custo antes de criá-lo. Se mudar nome ou região, atualize `cluster.yaml` e `prod.env` para manter os valores iguais.
+- EKS na região escolhida, com nós capazes de baixar imagens do ECR. O exemplo em `cluster.yaml` cria `frigus-prod` em `us-east-1` com dois nós `t3.medium`; revise capacidade e custo antes de criá-lo. Se mudar nome ou região, atualize `cluster.yaml` e `prod.env` para manter os valores iguais.
 - AWS Load Balancer Controller instalado no cluster. Siga o [guia oficial da AWS](https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html) e confirme que `deployment/aws-load-balancer-controller` está disponível em `kube-system`.
 - Domínio para o BFF e certificado ACM emitido na mesma região do ALB.
 - PostgreSQL, Redis, serviço Frigus AI e Supabase acessíveis a partir dos pods. Use TLS e restrinja os bancos à rede necessária.
-- `aws`, `docker`, `kubectl`, `envsubst` e `git` instalados.
+- Para publicar: `aws` CLI v2, `docker`, `kubectl`, `envsubst` e `git`.
+- Para criar a infraestrutura inicial: `eksctl` e `helm` também.
 
 O cluster não é criado pelo script de release. Se ainda não existir, revise `cluster.yaml`, autentique com o perfil AWS correto e crie-o uma vez:
 
 ```bash
-aws sso login --profile frigus-prod
-export AWS_REGION=sa-east-1
+export AWS_PROFILE=frigus-prod
+export AWS_REGION=us-east-1
+# Descomente a próxima linha somente se usar IAM Identity Center/SSO:
+# aws sso login --profile "$AWS_PROFILE"
+aws sts get-caller-identity --profile "$AWS_PROFILE"
 eksctl create cluster --config-file core-api/deploy/k8s/cluster.yaml
 ```
 
@@ -37,7 +41,7 @@ Preencha os arquivos `.env.production` com as URLs e credenciais reais. O arquiv
 
 Preencha `core-api/deploy/aws/prod.env` com:
 
-- `AWS_PROFILE` do perfil SSO autenticado (o exemplo usa `frigus-prod`). Faça `aws sso login --profile frigus-prod` antes do deploy.
+- `AWS_PROFILE` do perfil configurado (o exemplo usa `frigus-prod`). Faça `aws sso login --profile frigus-prod` se usar IAM Identity Center; para credenciais temporárias do Lab, autentique pelo mecanismo fornecido pelo Lab.
 - `AWS_REGION` e `EKS_CLUSTER_NAME` iguais aos do cluster.
 - `API_HOST` como hostname do BFF, sem `https://`.
 - `ALB_CERTIFICATE_ARN` do certificado ACM para esse hostname, na mesma região.

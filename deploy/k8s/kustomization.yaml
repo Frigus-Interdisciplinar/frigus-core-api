@@ -13,8 +13,8 @@ resources:
   - pdb.yaml
 images:
   - name: frigus-core-api
-    newName: ACCOUNT_ID.dkr.ecr.sa-east-1.amazonaws.com/frigus-core-api
+    newName: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/frigus-core-api
     newTag: REPLACE_ME
   - name: frigus-bff
-    newName: ACCOUNT_ID.dkr.ecr.sa-east-1.amazonaws.com/frigus-bff
+    newName: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/frigus-bff
     newTag: REPLACE_ME
