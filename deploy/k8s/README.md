@@ -17,7 +17,6 @@ O cluster não é criado pelo script de release. Se ainda não existir, revise `
 
 ```bash
 aws sso login --profile frigus-prod
-export AWS_PROFILE=frigus-prod
 export AWS_REGION=sa-east-1
 eksctl create cluster --config-file core-api/deploy/k8s/cluster.yaml
 ```
@@ -38,6 +37,7 @@ Preencha os arquivos `.env.production` com as URLs e credenciais reais. O arquiv
 
 Preencha `core-api/deploy/aws/prod.env` com:
 
+- `AWS_PROFILE` do perfil SSO autenticado (o exemplo usa `frigus-prod`). Faça `aws sso login --profile frigus-prod` antes do deploy.
 - `AWS_REGION` e `EKS_CLUSTER_NAME` iguais aos do cluster.
 - `API_HOST` como hostname do BFF, sem `https://`.
 - `ALB_CERTIFICATE_ARN` do certificado ACM para esse hostname, na mesma região.
