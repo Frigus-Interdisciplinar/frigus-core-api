@@ -202,7 +202,7 @@ public class TransactionService {
     }
 
     private Subscription handleFreeSubscription(Transaction transaction) {
-        Subscription subscription = subscriptionRepository.findByUserId(transaction.getUser().getId())
+        Subscription subscription = subscriptionRepository.findByUserIdAndDeletedAtIsNull(transaction.getUser().getId())
                 .orElseGet(() -> Subscription.builder()
                         .user(transaction.getUser())
                         .startedAt(Instant.now())

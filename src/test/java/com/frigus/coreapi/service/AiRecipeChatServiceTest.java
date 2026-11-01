@@ -283,7 +283,7 @@ class AiRecipeChatServiceTest {
     }
 
     @Test
-    @DisplayName("Deve processar mensagem e utilizar sugestão da IA gravada no banco com validade nos ingredientes")
+    @DisplayName("Deve processar mensagem e utilizar sugestão da IA gravada no banco quando mencionada")
     void shouldProcessUserMessageUsingAiSuggestionFromDatabase() {
         AiRecipeChatRequestDto requestDto = AiRecipeChatRequestDto.builder()
                 .stockId(1)
@@ -292,8 +292,8 @@ class AiRecipeChatServiceTest {
 
         FrigusAiRecipeResponse aiResponse = FrigusAiRecipeResponse.builder()
                 .sessionId("ai-session-123")
-                .chatMessage("Encontrei ótimas receitas no seu estoque!")
-                .build(); // recipeName is null, indicating AI chat response with database suggestions
+                .chatMessage("Recomendo preparar a receita Refeição Prática com seu estoque!")
+                .build();
 
         Recipe existingRecipe = Recipe.builder()
                 .id(10)
@@ -323,19 +323,137 @@ class AiRecipeChatServiceTest {
         when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
         when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
         when(frigusAiClient.requestRecipeFromAi(any(FrigusAiPromptPayload.class))).thenReturn(aiResponse);
-        when(recipeSuggestionRepository.findFirstByStockIdOrderByIdDesc(1)).thenReturn(Optional.of(aiSuggestion));
+        when(recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(1)).thenReturn(List.of(aiSuggestion));
         when(ingredientService.findByRecipeId(10)).thenReturn(List.of(ingDto));
 
         AiRecipeChatResponseDto response = service.processUserMessage(user, requestDto);
 
         assertThat(response).isNotNull();
         assertThat(response.getSessionId()).isEqualTo("ai-session-123");
-        assertThat(response.getChatMessage()).isEqualTo("Encontrei ótimas receitas no seu estoque!");
+        assertThat(response.getChatMessage()).isEqualTo("Recomendo preparar a receita Refeição Prática com seu estoque!");
         assertThat(response.getRecipeId()).isEqualTo(10);
         assertThat(response.getRecipeName()).isEqualTo("Refeição Prática");
         assertThat(response.getIngredients()).hasSize(1);
         assertThat(response.getIngredients().get(0).getInStock()).isTrue();
         assertThat(response.getIngredients().get(0).getExpireDate()).isEqualTo(stockProduct1.getExpireDate());
         assertThat(response.getNearestExpireDate()).isEqualTo(stockProduct1.getExpireDate());
+    }
+
+    @Test
+    @DisplayName("Deve retornar apenas mensagem conversacional quando nenhuma receita for gerada ou mencionada")
+    void shouldReturnOnlyChatMessageWhenNoRecipeIsGeneratedOrMentioned() {
+        AiRecipeChatRequestDto requestDto = AiRecipeChatRequestDto.builder()
+                .stockId(1)
+                .message("Olá!")
+                .build();
+
+        FrigusAiRecipeResponse aiResponse = FrigusAiRecipeResponse.builder()
+                .sessionId("ai-session-456")
+                .chatMessage("Olá! Como posso te ajudar hoje?")
+                .build();
+
+        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
+        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
+        when(frigusAiClient.requestRecipeFromAi(any(FrigusAiPromptPayload.class))).thenReturn(aiResponse);
+        when(recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(1)).thenReturn(List.of());
+
+        AiRecipeChatResponseDto response = service.processUserMessage(user, requestDto);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getSessionId()).isEqualTo("ai-session-456");
+        assertThat(response.getChatMessage()).isEqualTo("Olá! Como posso te ajudar hoje?");
+        assertThat(response.getRecipeId()).isNull();
+        assertThat(response.getRecipeName()).isNull();
+    }
+
+    @Test
+    void savesOnlyExplicitRecipeIdsFromTheCurrentTurnAndRefreshesExistingSuggestion() {
+        var request = AiRecipeChatRequestDto.builder().stockId(1).message("Receitas vegetarianas")
+                .foodPreferences(List.of("VEGETARIAN")).build();
+        var recipe = Recipe.builder().id(42).name("Tomate assado").active(true).instructions("Asse o tomate.").build();
+        var suggestion = RecipeSuggestion.builder().id(9).recipe(recipe).stock(stock).build();
+        var ingredient = IngredientResponseDto.builder().productId(20).productName("Tomate").build();
+        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
+        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
+        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
+                .sessionId("sessao").chatMessage("Uma sugestão para hoje").recipeIds(List.of(42, 42)).build());
+        when(recipeRepository.findById(42)).thenReturn(Optional.of(recipe));
+        when(ingredientService.findByRecipeId(42)).thenReturn(List.of(ingredient));
+        when(recipeSuggestionRepository.findFirstByStockIdAndRecipeIdOrderByIdDesc(1, 42)).thenReturn(Optional.of(suggestion));
+        when(recipeSuggestionRepository.save(suggestion)).thenReturn(suggestion);
+
+        var response = service.processUserMessage(user, request);
+
+        assertThat(response.getRecipeIds()).containsExactly(42);
+        assertThat(response.getRecipeId()).isEqualTo(42);
+        assertThat(response.getSuggestionId()).isEqualTo(9);
+        assertThat(response.getMatchedIngredients()).isEqualTo(1);
+        assertThat(ingredient.getInStock()).isTrue();
+        verify(recipeSuggestionRepository).save(suggestion);
+        verify(recipeSuggestionRepository, never()).findTop5ByStockIdOrderByIdDesc(any());
+        verify(recipeRepository, never()).save(any());
+        var payload = ArgumentCaptor.forClass(FrigusAiPromptPayload.class);
+        verify(frigusAiClient).requestRecipeFromAi(payload.capture());
+        assertThat(payload.getValue().getUserId()).isEqualTo(user.getId().toString());
+        assertThat(payload.getValue().getFoodPreferences()).containsExactly("VEGETARIAN");
+    }
+
+    @Test
+    void conversationalReplyWithEmptyIdsDoesNotAssociateAnOldRecipeByName() {
+        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
+        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+        when(stockProductRepository.findByStockId(1)).thenReturn(List.of());
+        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
+                .sessionId("sessao").chatMessage("Olá!").recipeIds(List.of()).build());
+        var response = service.processUserMessage(user, AiRecipeChatRequestDto.builder().stockId(1).message("Olá").build());
+        assertThat(response.getRecipeId()).isNull();
+        verifyNoInteractions(recipeRepository, recipeSuggestionRepository, ingredientService);
+    }
+
+    @Test
+    void savedRecipeReadDoesNotTreatExpiredOrEmptyLotsAsAvailable() {
+        stockProduct1.setExpireDate(LocalDate.now().minusDays(1));
+        stockProduct2.setQuantity(0);
+        var recipe = Recipe.builder().id(42).name("Receita salva").build();
+        var suggestion = RecipeSuggestion.builder().id(9).recipe(recipe).stock(stock).build();
+        var first = IngredientResponseDto.builder().productId(10).build();
+        var second = IngredientResponseDto.builder().productId(20).build();
+        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
+        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
+        when(recipeSuggestionRepository.findByStockIdOrderByScoreDesc(1)).thenReturn(List.of(suggestion));
+        when(ingredientService.findByRecipeId(42)).thenReturn(List.of(first, second));
+        var result = service.getSuggestionsByStock(user, 1);
+        assertThat(result.get(0).getIngredients()).allSatisfy(ingredient -> {
+            assertThat(ingredient.getInStock()).isFalse();
+            assertThat(ingredient.getExpireDate()).isNull();
+        });
+    }
+    @Test
+    void forwardsTheExactRequestedStockAndItsNonemptyInventoryWithoutReplacingTheStockId() {
+        Stock requested = Stock.builder().id(1813).group(group).build();
+        Product juice = Product.builder().id(349).name("Suco de frutas").category(Category.BEVERAGE).build();
+        StockProduct lot = StockProduct.builder().id(34901).stock(requested).product(juice).quantity(43)
+                .expireDate(LocalDate.of(2028, 7, 28)).productStatus(ProductStatus.FRESH).build();
+        when(stockRepository.findById(1813)).thenReturn(Optional.of(requested));
+        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+        when(stockProductRepository.findByStockId(1813)).thenReturn(List.of(lot));
+        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
+                .sessionId("session").chatMessage("Resposta do serviço").recipeIds(List.of()).build());
+
+        service.processUserMessage(user, AiRecipeChatRequestDto.builder().stockId(1813).message("O que há no estoque?").build());
+
+        ArgumentCaptor<FrigusAiPromptPayload> payload = ArgumentCaptor.forClass(FrigusAiPromptPayload.class);
+        verify(frigusAiClient).requestRecipeFromAi(payload.capture());
+        assertThat(payload.getValue().getStockId()).isEqualTo(1813);
+        assertThat(payload.getValue().getAvailableItems()).singleElement().satisfies(item -> {
+            assertThat(item.getProductName()).isEqualTo("Suco de frutas");
+            assertThat(item.getQuantity()).isEqualTo(43);
+            assertThat(item.getExpireDate()).isEqualTo(LocalDate.of(2028, 7, 28));
+        });
+        verify(stockProductRepository, never()).findByStockId(1);
+        verifyNoInteractions(recipeRepository, recipeSuggestionRepository, ingredientService);
     }
 }

@@ -1,0 +1,818 @@
+diff --git a/.env.example b/.env.example
+index 85ffcc4b24892e61890ce67bde0d4b8d8272d53b..b421c4657506f7ed08a27e2388744aa034d4f4cd 100644
+--- a/.env.example
++++ b/.env.example
+@@ -7,13 +7,18 @@ REDIS_URL=your_redis_url
+ JWT_SECRET=gere-um-segredo-aleatorio-com-pelo-menos-32-caracteres
+ JWT_EXPIRATION=900000
+ 
+-FRIGUS_AI_BASE_URL=frigus_ai_prod_url_here
++# HTTP(S) origin or legacy /v1 suffix; both chat and invoice paths are normalized once.
++FRIGUS_AI_BASE_URL=http://localhost:8000
+ 
+ AWS_REGION=us-east-1
+ AWS_S3_ENABLED=false
+ AWS_S3_BUCKET=
+ 
+ FRIGUS_AI_API_KEY=frigus_ai_api_key_here
++# Legacy public API key above is used only for NFC-e extraction (X-API-Key).
++FRIGUS_AI_API_KEY_REQUIRED=false
++# Dedicated internal chat key: match Python API_KEYS__CORE_SERVICE_KEY (minimum 32 characters).
++FRIGUS_AI_CORE_SERVICE_KEY=
+ 
+ # local Compose overrides database/Redis URLs; it does not use remote credentials.
+ LOCAL_API_PORT=8080
+diff --git a/src/main/java/com/frigus/coreapi/client/FrigusAiClient.java b/src/main/java/com/frigus/coreapi/client/FrigusAiClient.java
+index dd1eed984f18c3bc4297be6c23118c9927bcd18b..58c39f92134549e3fe6ca827285aab249b14890c 100644
+--- a/src/main/java/com/frigus/coreapi/client/FrigusAiClient.java
++++ b/src/main/java/com/frigus/coreapi/client/FrigusAiClient.java
+@@ -6,14 +6,14 @@ import com.frigus.coreapi.exception.ServiceUnavailableException;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.http.MediaType;
+-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+ import org.springframework.stereotype.Component;
+ import org.springframework.web.client.RestClient;
+ import org.springframework.web.client.RestClientException;
++import org.springframework.web.client.RestClientResponseException;
++import org.springframework.http.client.SimpleClientHttpRequestFactory;
+ 
+-import java.util.UUID;
+-import java.time.Duration;
+ import java.util.List;
++import java.net.URI;
+ 
+ @Slf4j
+ @Component
+@@ -21,31 +21,27 @@ public class FrigusAiClient {
+     private static final int INVOICE_PRODUCT_BATCH_SIZE = 10;
+ 
+     private final RestClient restClient;
+-    private final String baseUrl;
++    private final boolean configured;
++    private final String invoiceApiKey;
++    private final String coreServiceKey;
+ 
+     public FrigusAiClient(
+             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
+             @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
+-            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
+-        if (apiKeyRequired && (apiKey == null || apiKey.isBlank())) {
+-            throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
+-        }
+-        this.baseUrl = baseUrl;
+-        // Uvicorn serves HTTP/1.1; avoid a JDK h2c upgrade on the internal request.
+-        var requestFactory = new SimpleClientHttpRequestFactory();
+-        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+-        requestFactory.setReadTimeout(Duration.ofSeconds(110));
+-        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory);
+-        if (apiKey != null && !apiKey.isBlank()) {
+-            builder.defaultHeader("X-API-Key", apiKey);
+-        }
+-        this.restClient = builder.build();
++            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired,
++            @Value("${FRIGUS_AI_CORE_SERVICE_KEY:}") String coreServiceKey) {
++        if (apiKeyRequired && (apiKey == null || apiKey.isBlank()))
++            throw new IllegalStateException("FRIGUS_AI_API_KEY is required for invoice extraction");
++        this.invoiceApiKey = apiKey == null ? "" : apiKey;
++        this.coreServiceKey = coreServiceKey == null ? "" : coreServiceKey;
++        this.configured = this.coreServiceKey.length() >= 32;
++        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
++        // Preserve the origin/dev NFC-e transport policy; neither operation replays requests.
++        factory.setConnectTimeout(5_000);
++        factory.setReadTimeout(110_000);
++        this.restClient = RestClient.builder().baseUrl(normalizeBaseUrl(baseUrl)).requestFactory(factory).build();
+     }
+ 
+-
+-    public record ChatCreateResponse(String chat_id, Integer stock_id) {}
+-    public record ChatMessageRequest(String content) {}
+-    public record ChatMessageResponse(String chat_id, String content) {}
+     public record InvoiceProductInput(int lineNumber, String description, Double quantity, String unit, Double unitPrice, Double totalPrice, String evidence) {}
+     public record InvoiceExtractionRequest(String documentType, String state, String locale, List<InvoiceProductInput> products) {}
+     public record InvoiceItem(int lineNumber, String description, String productName, String brand, Double quantity, String unit, String unitOfMeasure, Double unitPrice, Double totalPrice, String category, String storagePlace, Double confidence, String evidence) {}
+@@ -58,6 +54,7 @@ public class FrigusAiClient {
+             for (int start = 0; start < products.size(); start += INVOICE_PRODUCT_BATCH_SIZE) {
+                 var batch = products.subList(start, Math.min(start + INVOICE_PRODUCT_BATCH_SIZE, products.size()));
+                 var result = restClient.post().uri("/v1/invoices/extract")
++                        .headers(headers -> { if (!invoiceApiKey.isBlank()) headers.set("X-API-Key", invoiceApiKey); })
+                         .contentType(MediaType.APPLICATION_JSON)
+                         .body(new InvoiceExtractionRequest("NFCE", "SP", "pt-BR", batch))
+                         .retrieve().body(InvoiceExtraction.class);
+@@ -72,48 +69,99 @@ public class FrigusAiClient {
+         }
+     }
+ 
++    public record CoreChatRequest(String userId, Integer stockId, String message, String sessionId,
++                                  List<String> foodPreferences) {}
++
+     public FrigusAiRecipeResponse requestRecipeFromAi(FrigusAiPromptPayload payload) {
++        long started = System.nanoTime();
++        Integer stockId = payload == null ? null : payload.getStockId();
++        boolean existingSession = payload != null && payload.getSessionId() != null && !payload.getSessionId().isBlank();
+         try {
+-            String sessionId = payload.getSessionId();
+-            if (sessionId == null || sessionId.isBlank()) {
+-                ChatCreateResponse chat = restClient.post()
+-                        .uri("/v1/chats")
+-                        .contentType(MediaType.APPLICATION_JSON)
+-                        .retrieve()
+-                        .body(ChatCreateResponse.class);
+-                if (chat != null && chat.chat_id() != null) {
+-                    sessionId = chat.chat_id();
+-                } else {
+-                    sessionId = UUID.randomUUID().toString();
+-                }
++            if (!configured || payload == null || payload.getUserId() == null || payload.getUserId().isBlank()) {
++                log.warn("AI chat unavailable before HTTP: stockId={}, credentialsConfigured={}, userPresent={}",
++                        stockId, configured, payload != null && payload.getUserId() != null && !payload.getUserId().isBlank());
++                throw new ServiceUnavailableException("Integração de IA indisponível", "O assistente está temporariamente indisponível.");
+             }
+-
+-            log.info("Enviando mensagem para frigus-ai chat {} (stockId: {})", sessionId, payload.getStockId());
+-
+-            ChatMessageRequest request = new ChatMessageRequest(payload.getMessage());
+-            ChatMessageResponse response = restClient.post()
+-                    .uri("/v1/chats/{chatId}/messages", sessionId)
++            log.debug("AI chat request: stockId={}, existingSession={}, preparedStockItems={}", stockId, existingSession,
++                    payload.getAvailableItems() == null ? null : payload.getAvailableItems().size());
++            CoreChatRequest request = new CoreChatRequest(payload.getUserId(), payload.getStockId(),
++                    payload.getMessage(), payload.getSessionId(),
++                    payload.getFoodPreferences() == null ? List.of() : payload.getFoodPreferences());
++            FrigusAiRecipeResponse response = restClient.post()
++                    .uri("/internal/core/chat")
++                    .header("X-Core-Service-Key", coreServiceKey)
+                     .contentType(MediaType.APPLICATION_JSON)
+                     .body(request)
+                     .retrieve()
+-                    .body(ChatMessageResponse.class);
++                    .body(FrigusAiRecipeResponse.class);
+ 
+-            if (response != null && response.content() != null) {
+-                return FrigusAiRecipeResponse.builder()
+-                        .sessionId(response.chat_id() != null ? response.chat_id() : sessionId)
+-                        .chatMessage(response.content())
+-                        .build();
++            if (response != null && response.getSessionId() != null && !response.getSessionId().isBlank() &&
++                    response.getChatMessage() != null && !response.getChatMessage().isBlank() &&
++                    response.getRecipeIds() != null && response.getRecipeIds().size() <= 10 &&
++                    response.getRecipeIds().stream().allMatch(id -> id != null && id > 0)) {
++                log.info("AI chat completed: stockId={}, existingSession={}, recipeCount={}, elapsedMs={}",
++                        stockId, existingSession, response.getRecipeIds().size(), elapsedMillis(started));
++                return response;
+             }
+ 
++            log.warn("Invalid AI chat response: stockId={}, sessionPresent={}, messagePresent={}, recipeIdsPresent={}, elapsedMs={}",
++                    stockId, response != null && response.getSessionId() != null && !response.getSessionId().isBlank(),
++                    response != null && response.getChatMessage() != null && !response.getChatMessage().isBlank(),
++                    response != null && response.getRecipeIds() != null, elapsedMillis(started));
+             throw new ServiceUnavailableException("Resposta inválida da IA", "A inteligência artificial não retornou uma resposta válida.");
++        } catch (RestClientResponseException e) {
++            Throwable diagnostic = diagnosticCause(e, 0);
++            log.error("AI HTTP call failed: operation=/internal/core/chat, stockId={}, existingSession={}, upstreamStatus={}, elapsedMs={}",
++                    stockId, existingSession, e.getStatusCode().value(), elapsedMillis(started), diagnostic);
++            throw unavailable(diagnostic);
+         } catch (RestClientException e) {
+-            log.error("Serviço frigus_ai indisponível ou erro na chamada HTTP");
+-            throw new ServiceUnavailableException("Serviço de IA indisponível", "O serviço de inteligência artificial está temporariamente indisponível. Tente novamente mais tarde.");
++            Throwable diagnostic = diagnosticCause(e, 0);
++            log.error("AI transport/decoding failed: operation=/internal/core/chat, stockId={}, existingSession={}, elapsedMs={}",
++                    stockId, existingSession, elapsedMillis(started), diagnostic);
++            throw unavailable(diagnostic);
+         } catch (ServiceUnavailableException e) {
+             throw e;
+         } catch (Exception e) {
+-            log.error("Erro inesperado ao chamar frigus_ai");
+-            throw new ServiceUnavailableException("Erro ao processar IA", "Ocorreu uma falha ao comunicar com o assistente de inteligência artificial.");
++            Throwable diagnostic = diagnosticCause(e, 0);
++            log.error("Unexpected AI client failure: stockId={}, existingSession={}, elapsedMs={}",
++                    stockId, existingSession, elapsedMillis(started), diagnostic);
++            ServiceUnavailableException failure = new ServiceUnavailableException("Erro ao processar IA",
++                    "Ocorreu uma falha ao comunicar com o assistente de inteligência artificial.");
++            failure.initCause(diagnostic);
++            throw failure;
+         }
+     }
++
++    /** Accept an origin or the previous /v1 configuration, never concatenate arbitrary route prefixes. */
++    static String normalizeBaseUrl(String value) {
++        final URI uri;
++        try { uri = URI.create(value == null ? "" : value.trim()); }
++        catch (IllegalArgumentException exception) {
++            throw new IllegalStateException("FRIGUS_AI_BASE_URL must be an HTTP(S) origin or end in /v1");
++        }
++        String path = uri.getRawPath();
++        if (!(uri.getScheme() != null && (uri.getScheme().equalsIgnoreCase("http") || uri.getScheme().equalsIgnoreCase("https"))) ||
++                uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null ||
++                !(path == null || path.isEmpty() || path.equals("/") || path.equals("/v1") || path.equals("/v1/")))
++            throw new IllegalStateException("FRIGUS_AI_BASE_URL must be an HTTP(S) origin or end in /v1");
++        return uri.getScheme() + "://" + uri.getRawAuthority();
++    }
++
++    private static long elapsedMillis(long started) { return (System.nanoTime() - started) / 1_000_000; }
++
++    private static ServiceUnavailableException unavailable(Throwable diagnostic) {
++        ServiceUnavailableException failure = new ServiceUnavailableException("Serviço de IA indisponível",
++                "O serviço de inteligência artificial está temporariamente indisponível. Tente novamente mais tarde.");
++        failure.initCause(diagnostic);
++        return failure;
++    }
++
++    /** Preserve failure classes, frames and causal chain without logging response bodies, tokens or prompts. */
++    private static Throwable diagnosticCause(Throwable failure, int depth) {
++        RuntimeException diagnostic = new RuntimeException(failure.getClass().getName());
++        diagnostic.setStackTrace(failure.getStackTrace());
++        if (failure.getCause() != null && failure.getCause() != failure && depth < 8)
++            diagnostic.initCause(diagnosticCause(failure.getCause(), depth + 1));
++        return diagnostic;
++    }
+ }
+diff --git a/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatRequestDto.java b/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatRequestDto.java
+index f50cf6fc1dd944a5900ce2784b8d996fdb0ceeee..34e9f05152c40af8ed5e869b0e0462b3bab65313 100644
+--- a/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatRequestDto.java
++++ b/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatRequestDto.java
+@@ -2,6 +2,8 @@ package com.frigus.coreapi.dto.ai;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.util.List;
+ import lombok.AllArgsConstructor;
+ import lombok.Builder;
+ import lombok.Getter;
+@@ -22,4 +24,7 @@ public class AiRecipeChatRequestDto {
+     private Integer stockId;
+ 
+     private String sessionId;
+-}
+\ No newline at end of file
++
++    @Size(max = 9)
++    private List<String> foodPreferences;
++}
+diff --git a/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatResponseDto.java b/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatResponseDto.java
+index 337951885418769f0afeab918cfac3f54dc22000..daa0509eb84abf26f4f926770a1bb56c27a6048d 100644
+--- a/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatResponseDto.java
++++ b/src/main/java/com/frigus/coreapi/dto/ai/AiRecipeChatResponseDto.java
+@@ -19,6 +19,7 @@ import java.util.List;
+ public class AiRecipeChatResponseDto {
+     private String sessionId;
+     private String chatMessage;
++    private List<Integer> recipeIds;
+ 
+     private Integer recipeId;
+     private String recipeName;
+diff --git a/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiPromptPayload.java b/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiPromptPayload.java
+index 32c57e4198876f6658d409b3f95426bf431e3796..35e28043c1329d5d759dbad13de989d1e63e21aa 100644
+--- a/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiPromptPayload.java
++++ b/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiPromptPayload.java
+@@ -20,6 +20,7 @@ public class FrigusAiPromptPayload {
+     private String message;
+     private String sessionId;
+     private Integer stockId;
++    private List<String> foodPreferences;
+     private List<StockItemPayload> availableItems;
+ 
+     @Builder
+diff --git a/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiRecipeResponse.java b/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiRecipeResponse.java
+index 5d92cf44936ada9a973f4b659e28aa67023a5918..4d11ca160ee0cf46d9b641271dd2a3f35fbb809c 100644
+--- a/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiRecipeResponse.java
++++ b/src/main/java/com/frigus/coreapi/dto/ai/FrigusAiRecipeResponse.java
+@@ -17,6 +17,7 @@ import java.util.List;
+ public class FrigusAiRecipeResponse {
+     private String sessionId;
+     private String chatMessage;
++    private List<Integer> recipeIds;
+     private String recipeName;
+     private String description;
+     private String instructions;
+diff --git a/src/main/java/com/frigus/coreapi/repository/RecipeSuggestionRepository.java b/src/main/java/com/frigus/coreapi/repository/RecipeSuggestionRepository.java
+index 690a633369cbeec784daf9194924cb810cda9007..9c38ae78e18c9d5462d86ba61bc64996bd2dac7e 100644
+--- a/src/main/java/com/frigus/coreapi/repository/RecipeSuggestionRepository.java
++++ b/src/main/java/com/frigus/coreapi/repository/RecipeSuggestionRepository.java
+@@ -9,6 +9,7 @@ import java.util.List;
+ public interface RecipeSuggestionRepository extends BaseRepository<RecipeSuggestion, Integer> {
+     List<RecipeSuggestion> findByStockIdOrderByScoreDesc(Integer stockId);
+     List<RecipeSuggestion> findByRecipeId(Integer recipeId);
++    java.util.Optional<RecipeSuggestion> findFirstByStockIdAndRecipeIdOrderByIdDesc(Integer stockId, Integer recipeId);
+     java.util.Optional<RecipeSuggestion> findFirstByStockIdOrderByIdDesc(Integer stockId);
+     List<RecipeSuggestion> findTop5ByStockIdOrderByIdDesc(Integer stockId);
+ }
+diff --git a/src/main/java/com/frigus/coreapi/service/AiRecipeChatService.java b/src/main/java/com/frigus/coreapi/service/AiRecipeChatService.java
+index 6b51748b8ce8c72e236fa504efd943badc19de31..d52bffa1921a89c37d9ff21e96ddafc993ef2a32 100644
+--- a/src/main/java/com/frigus/coreapi/service/AiRecipeChatService.java
++++ b/src/main/java/com/frigus/coreapi/service/AiRecipeChatService.java
+@@ -9,6 +9,7 @@ import com.frigus.coreapi.dto.ingredient.IngredientRequestDto;
+ import com.frigus.coreapi.dto.ingredient.IngredientResponseDto;
+ import com.frigus.coreapi.exception.ForbiddenException;
+ import com.frigus.coreapi.exception.NotFoundException;
++import com.frigus.coreapi.exception.ServiceUnavailableException;
+ import com.frigus.coreapi.model.Recipe;
+ import com.frigus.coreapi.model.RecipeSuggestion;
+ import com.frigus.coreapi.model.Stock;
+@@ -52,6 +53,8 @@ public class AiRecipeChatService {
+         validateUserAccess(currentUser, stock);
+ 
+         List<StockProduct> stockProducts = stockProductRepository.findByStockId(stock.getId());
++        log.info("AI stock context: stockId={}, lotCount={}, positiveQuantityLots={}", stock.getId(), stockProducts.size(),
++                stockProducts.stream().filter(item -> item.getQuantity() != null && item.getQuantity() > 0).count());
+ 
+         // Monta o payload para o serviço de IA com itens ordenados por proximidade da validade
+         List<FrigusAiPromptPayload.StockItemPayload> itemsPayload = stockProducts.stream()
+@@ -69,12 +72,16 @@ public class AiRecipeChatService {
+         FrigusAiPromptPayload promptPayload = FrigusAiPromptPayload.builder()
+                 .userId(currentUser != null && currentUser.getId() != null ? currentUser.getId().toString() : null)
+                 .message(dto.getMessage())
+-                .sessionId(dto.getSessionId()) // TODO: NAO PASSAR, IA JA GERA
++                .sessionId(dto.getSessionId())
+                 .stockId(stock.getId())
++                .foodPreferences(dto.getFoodPreferences())
+                 .availableItems(itemsPayload)
+                 .build();
+ 
+         FrigusAiRecipeResponse aiResponse = frigusAiClient.requestRecipeFromAi(promptPayload);
++        if (aiResponse.getRecipeIds() != null) {
++            return saveReportedSuggestions(aiResponse, stock, stockProducts);
++        }
+ 
+         Recipe recipe;
+         final List<IngredientResponseDto> savedIngredients = new ArrayList<>();
+@@ -85,18 +92,21 @@ public class AiRecipeChatService {
+         LocalDate nearestExpire;
+ 
+         Optional<RecipeSuggestion> latestAiSuggestion = Optional.empty();
+-        if (aiResponse.getRecipeName() == null) {
++        if (aiResponse.getRecipeName() == null || aiResponse.getRecipeName().isBlank()) {
+             List<RecipeSuggestion> recent = recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(stock.getId());
+             if (recent != null && !recent.isEmpty()) {
+                 String chatMsg = aiResponse.getChatMessage() != null ? aiResponse.getChatMessage().toLowerCase() : "";
+                 latestAiSuggestion = recent.stream()
+                         .filter(s -> s.getRecipe() != null && s.getRecipe().getName() != null &&
++                                !s.getRecipe().getName().isBlank() &&
+                                 chatMsg.contains(s.getRecipe().getName().toLowerCase()))
+-                        .findFirst()
+-                        .or(() -> Optional.of(recent.get(recent.size() - 1)));
++                        .findFirst();
+             }
+             if (latestAiSuggestion.isEmpty()) {
+-                latestAiSuggestion = recipeSuggestionRepository.findFirstByStockIdOrderByIdDesc(stock.getId());
++                return AiRecipeChatResponseDto.builder()
++                        .sessionId(aiResponse.getSessionId())
++                        .chatMessage(aiResponse.getChatMessage())
++                        .build();
+             }
+         }
+ 
+@@ -214,6 +224,59 @@ public class AiRecipeChatService {
+                 .build();
+     }
+ 
++    private AiRecipeChatResponseDto saveReportedSuggestions(FrigusAiRecipeResponse reply, Stock stock,
++                                                            List<StockProduct> products) {
++        Map<Integer, LocalDate> available = products.stream()
++                .filter(p -> p.getQuantity() != null && p.getQuantity() > 0 && p.getExpireDate() != null &&
++                        !p.getExpireDate().isBefore(LocalDate.now()))
++                .collect(Collectors.toMap(p -> p.getProduct().getId(), StockProduct::getExpireDate,
++                        (a, b) -> a.isBefore(b) ? a : b));
++        List<Integer> ids = reply.getRecipeIds().stream().distinct().toList();
++        AiRecipeChatResponseDto result = AiRecipeChatResponseDto.builder()
++                .sessionId(reply.getSessionId()).chatMessage(reply.getChatMessage()).recipeIds(ids).build();
++        for (Integer id : ids) {
++            Recipe recipe = recipeRepository.findById(id)
++                    .filter(r -> !Boolean.FALSE.equals(r.getActive()))
++                    .orElseThrow(() -> new ServiceUnavailableException("Sugestão não confirmada", "Não foi possível confirmar a receita sugerida. Consulte as receitas salvas antes de tentar novamente."));
++            List<IngredientResponseDto> ingredients = ingredientService.findByRecipeId(id);
++            int matched = 0;
++            LocalDate nearest = null;
++            for (IngredientResponseDto ingredient : ingredients) {
++                LocalDate expiry = available.get(ingredient.getProductId());
++                ingredient.setInStock(expiry != null);
++                ingredient.setExpireDate(expiry);
++                if (expiry != null) {
++                    matched++;
++                    if (nearest == null || expiry.isBefore(nearest)) nearest = expiry;
++                }
++            }
++            int missing = ingredients.size() - matched;
++            BigDecimal score = ingredients.isEmpty() ? BigDecimal.ZERO :
++                    BigDecimal.valueOf(matched).divide(BigDecimal.valueOf(ingredients.size()), 3, RoundingMode.HALF_UP);
++            RecipeSuggestion suggestion = recipeSuggestionRepository
++                    .findFirstByStockIdAndRecipeIdOrderByIdDesc(stock.getId(), id)
++                    .orElseGet(() -> RecipeSuggestion.builder().recipe(recipe).stock(stock).createdAt(Instant.now()).build());
++            suggestion.setMatchedIngredients(matched);
++            suggestion.setMissingIngredients(missing);
++            suggestion.setScore(score);
++            suggestion.setNearestExpireDate(nearest);
++            suggestion = recipeSuggestionRepository.save(suggestion);
++            if (result.getRecipeId() == null) {
++                result.setRecipeId(id);
++                result.setRecipeName(recipe.getName());
++                result.setRecipeDescription(recipe.getDescription());
++                result.setRecipeInstructions(recipe.getInstructions());
++                result.setIngredients(ingredients);
++                result.setSuggestionId(suggestion.getId());
++                result.setMatchedIngredients(matched);
++                result.setMissingIngredients(missing);
++                result.setScore(score);
++                result.setNearestExpireDate(nearest);
++            }
++        }
++        return result;
++    }
++
+     @Transactional(readOnly = true)
+     public List<AiRecipeChatResponseDto> getSuggestionsByStock(User currentUser, Integer stockId) {
+         Stock stock = stockRepository.findById(stockId)
+@@ -223,16 +286,14 @@ public class AiRecipeChatService {
+ 
+         List<StockProduct> stockProducts = stockProductRepository.findByStockId(stock.getId());
+         Map<Integer, LocalDate> stockExpireMap = stockProducts.stream()
+-                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null && sp.getExpireDate() != null)
++                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null && sp.getExpireDate() != null &&
++                        sp.getQuantity() != null && sp.getQuantity() > 0 && !sp.getExpireDate().isBefore(LocalDate.now()))
+                 .collect(Collectors.toMap(
+                         sp -> sp.getProduct().getId(),
+                         StockProduct::getExpireDate,
+                         (d1, d2) -> d1.isBefore(d2) ? d1 : d2
+                 ));
+-        Set<Integer> availableProductIds = stockProducts.stream()
+-                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null)
+-                .map(sp -> sp.getProduct().getId())
+-                .collect(Collectors.toSet());
++        Set<Integer> availableProductIds = stockExpireMap.keySet();
+ 
+         return recipeSuggestionRepository.findByStockIdOrderByScoreDesc(stockId).stream()
+                 .map(sugg -> {
+@@ -240,9 +301,7 @@ public class AiRecipeChatService {
+                     for (IngredientResponseDto ing : ingredients) {
+                         boolean inStock = ing.getProductId() != null && availableProductIds.contains(ing.getProductId());
+                         ing.setInStock(inStock);
+-                        if (inStock) {
+-                            ing.setExpireDate(stockExpireMap.get(ing.getProductId()));
+-                        }
++                        ing.setExpireDate(stockExpireMap.get(ing.getProductId()));
+                     }
+ 
+                     return AiRecipeChatResponseDto.builder()
+diff --git a/src/test/java/com/frigus/coreapi/client/FrigusAiClientTest.java b/src/test/java/com/frigus/coreapi/client/FrigusAiClientTest.java
+index b4195ad081ab8cc50053f548d4abac693a8c3ae1..3c3a32a49a4efb6807d36e95631bb7398a2958e1 100644
+--- a/src/test/java/com/frigus/coreapi/client/FrigusAiClientTest.java
++++ b/src/test/java/com/frigus/coreapi/client/FrigusAiClientTest.java
+@@ -14,23 +14,29 @@ import org.springframework.http.MediaType;
+ import org.springframework.test.web.client.MockRestServiceServer;
+ import org.springframework.test.util.ReflectionTestUtils;
+ import org.springframework.web.client.RestClient;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.springframework.boot.test.system.CapturedOutput;
++import org.springframework.boot.test.system.OutputCaptureExtension;
+ 
+ import java.net.SocketTimeoutException;
+ import java.util.List;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+ import static org.hamcrest.Matchers.hasSize;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
+ import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
+ import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
+ 
++@ExtendWith(OutputCaptureExtension.class)
+ class FrigusAiClientTest {
++    private static final String LEGACY_API_KEY = "test-api-key";
++    private static final String SERVICE_KEY = "test-service-key-with-at-least-32-characters";
+     private MockRestServiceServer server;
+     private FrigusAiClient client;
+ 
+     @BeforeEach
+     void setUp() {
+-        client = new FrigusAiClient("http://ai.example.test", "test-api-key", true);
++        client = new FrigusAiClient("http://ai.example.test", LEGACY_API_KEY, true, SERVICE_KEY);
+         RestClient.Builder builder = ((RestClient) ReflectionTestUtils.getField(client, "restClient")).mutate();
+         server = MockRestServiceServer.bindTo(builder).build();
+         // Bind the existing client to an in-memory HTTP transport; no real network requests.
+@@ -43,29 +49,30 @@ class FrigusAiClientTest {
+     }
+ 
+     @Test
+-    void createsChatThenSendsMessageUsingProviderSession() {
+-        server.expect(requestTo("http://ai.example.test/v1/chats")).andExpect(method(HttpMethod.POST))
+-                .andRespond(withSuccess("{\"chat_id\":\"new-session\",\"stock_id\":7}", MediaType.APPLICATION_JSON));
+-        expectMessage("new-session").andRespond(withSuccess(
+-                "{\"chat_id\":\"new-session\",\"content\":\"Suggestion\"}", MediaType.APPLICATION_JSON));
++    void sendsAuthenticatedUserAndCurrentStockInOneRequest() {
++        expectMessage(null).andRespond(withSuccess(
++                "{\"sessionId\":\"new-session\",\"chatMessage\":\"Suggestion\",\"recipeIds\":[42]}", MediaType.APPLICATION_JSON));
+ 
+         var response = client.requestRecipeFromAi(payload(null));
+ 
+         assertThat(response.getSessionId()).isEqualTo("new-session");
+         assertThat(response.getChatMessage()).isEqualTo("Suggestion");
+         assertThat(response.getRecipeName()).isNull();
++        assertThat(response.getRecipeIds()).containsExactly(42);
+     }
+ 
+     @Test
+-    void reusesExistingSessionAndRetainsItWhenProviderOmitsChatId() {
+-        expectMessage("existing").andRespond(withSuccess("{\"content\":\"Reply\"}", MediaType.APPLICATION_JSON));
++    void reusesExistingSessionWithTheSameUserAndStock() {
++        expectMessage("existing").andRespond(withSuccess("{\"sessionId\":\"existing\",\"chatMessage\":\"Reply\",\"recipeIds\":[]}", MediaType.APPLICATION_JSON));
+         var response = client.requestRecipeFromAi(payload("existing"));
+         assertThat(response.getSessionId()).isEqualTo("existing");
+         assertThat(response.getChatMessage()).isEqualTo("Reply");
+     }
+ 
+     @ParameterizedTest
+-    @ValueSource(strings = {"{}", "{\"content\":null}", "not-json"})
++    @ValueSource(strings = {"{}", "{\"chatMessage\":null}", "not-json",
++            "{\"sessionId\":\"existing\",\"chatMessage\":\"Reply\"}",
++            "{\"sessionId\":\"existing\",\"chatMessage\":\"Reply\",\"recipeIds\":[-1]}"})
+     void invalidProviderResponseProducesServiceUnavailableError(String body) {
+         expectMessage("existing").andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+         assertUnavailable("existing");
+@@ -78,9 +85,32 @@ class FrigusAiClientTest {
+     }
+ 
+     @Test
+-    void socketTimeoutProducesServiceUnavailableErrorWithoutWaitingOrRealNetwork() {
++    void socketTimeoutProducesServiceUnavailableErrorWithoutWaitingOrRealNetwork(CapturedOutput output) {
+         expectMessage("existing").andRespond(withException(new SocketTimeoutException("simulated timeout")));
+         assertUnavailable("existing");
++        assertThat(output.getAll()).contains("stockId=7", "java.net.SocketTimeoutException", "elapsedMs=");
++    }
++
++    @Test
++    void providerStatusIsDiagnosableWithoutLeakingItsBodyOrCredentials(CapturedOutput output) {
++        expectMessage("existing").andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
++                .contentType(MediaType.APPLICATION_JSON).body("{\"detail\":\"private-provider-body\"}"));
++        assertUnavailable("existing");
++        assertThat(output.getAll()).contains("upstreamStatus=422", "stockId=7", "HttpClientErrorException")
++                .doesNotContain("private-provider-body", SERVICE_KEY);
++    }
++
++    @Test
++    void failedChatCreationProducesServiceUnavailableErrorWithoutSendingMessage() {
++        expectMessage(null).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
++        assertUnavailable(null);
++    }
++
++    @Test
++    void requiredApiKeyFailsBeforeAnyRequest() {
++        assertThatThrownBy(() -> new FrigusAiClient("http://ai.example.test", "", true, SERVICE_KEY))
++                .isInstanceOf(IllegalStateException.class)
++                .hasMessageNotContaining("test-api-key");
+     }
+ 
+     @Test
+@@ -104,38 +134,67 @@ class FrigusAiClientTest {
+         assertThat(result.items()).extracting(FrigusAiClient.InvoiceItem::lineNumber).containsExactly(1, 11);
+     }
+ 
+-    @Test
+-    void failedChatCreationProducesServiceUnavailableErrorWithoutSendingMessage() {
+-        server.expect(requestTo("http://ai.example.test/v1/chats")).andExpect(method(HttpMethod.POST))
+-                .andExpect(header("X-API-Key", "test-api-key"))
+-                .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+-        assertUnavailable(null);
++    private String invoiceItem(int lineNumber) {
++        return "{\"items\":[{\"lineNumber\":" + lineNumber + ",\"description\":\"Product " + lineNumber
++                + "\",\"productName\":\"Product " + lineNumber
++                + "\",\"quantity\":1,\"unit\":\"UN\",\"unitOfMeasure\":\"UNIT\",\"unitPrice\":1,"
++                + "\"totalPrice\":1,\"category\":\"GRAIN\",\"storagePlace\":\"PANTRY\",\"confidence\":1,"
++                + "\"evidence\":\"Product " + lineNumber + "\"}],\"warnings\":[]}";
++    }
++
++    @ParameterizedTest
++    @ValueSource(strings = {"http://ai.example.test", "http://ai.example.test/", "http://ai.example.test/v1", "http://ai.example.test/v1/"})
++    void acceptsOriginOrLegacyV1WithoutMixingChatAndInvoiceCredentials(String baseUrl) {
++        client = new FrigusAiClient(baseUrl, LEGACY_API_KEY, true, SERVICE_KEY);
++        RestClient.Builder builder = ((RestClient) ReflectionTestUtils.getField(client, "restClient")).mutate();
++        server = MockRestServiceServer.bindTo(builder).build();
++        ReflectionTestUtils.setField(client, "restClient", builder.build());
++        expectMessage(null).andExpect(request -> assertThat(request.getHeaders().getFirst("X-API-Key")).isNull())
++                .andRespond(withSuccess("{\"sessionId\":\"session\",\"chatMessage\":\"Reply\",\"recipeIds\":[]}", MediaType.APPLICATION_JSON));
++        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
++                .andExpect(header("X-API-Key", LEGACY_API_KEY))
++                .andExpect(request -> assertThat(request.getHeaders().getFirst("X-Core-Service-Key")).isNull())
++                .andRespond(withSuccess(invoiceItem(1), MediaType.APPLICATION_JSON));
++        client.requestRecipeFromAi(payload(null));
++        assertThat(client.extractInvoice(List.of(new FrigusAiClient.InvoiceProductInput(1, "Rice", 1.0,
++                "UN", 1.0, 1.0, "Rice"))).items()).hasSize(1);
++    }
++
++    @ParameterizedTest
++    @ValueSource(strings = {"https://ai.example.test/other", "https://user:private@ai.example.test/v1",
++            "https://ai.example.test/v1?secret=value", "https://ai.example.test/#fragment", "not a URL"})
++    void rejectsAmbiguousOrCredentialBearingConfigurationWithoutPrintingItsValue(String baseUrl) {
++        assertThatThrownBy(() -> new FrigusAiClient(baseUrl, LEGACY_API_KEY, false, SERVICE_KEY))
++                .isInstanceOf(IllegalStateException.class).hasMessageContaining("FRIGUS_AI_BASE_URL")
++                .hasMessageNotContaining("private")
++                .hasMessageNotContaining("secret=value");
+     }
+ 
+     @Test
+-    void requiredApiKeyFailsBeforeAnyRequest() {
+-        assertThatThrownBy(() -> new FrigusAiClient("http://ai.example.test", "", true))
+-                .isInstanceOf(IllegalStateException.class)
+-                .hasMessageNotContaining("test-api-key");
++    void missingCoreServiceKeyBlocksChatButDoesNotDisableInvoiceExtraction() {
++        client = new FrigusAiClient("http://ai.example.test/v1", LEGACY_API_KEY, true, "");
++        RestClient.Builder builder = ((RestClient) ReflectionTestUtils.getField(client, "restClient")).mutate();
++        server = MockRestServiceServer.bindTo(builder).build();
++        ReflectionTestUtils.setField(client, "restClient", builder.build());
++        assertUnavailable(null);
++        server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
++                .andExpect(header("X-API-Key", LEGACY_API_KEY))
++                .andRespond(withSuccess(invoiceItem(1), MediaType.APPLICATION_JSON));
++        assertThat(client.extractInvoice(List.of(new FrigusAiClient.InvoiceProductInput(1, "Rice", 1.0,
++                "UN", 1.0, 1.0, "Rice"))).items()).hasSize(1);
+     }
+ 
+     private org.springframework.test.web.client.ResponseActions expectMessage(String session) {
+-        return server.expect(requestTo("http://ai.example.test/v1/chats/" + session + "/messages"))
+-                .andExpect(header("X-API-Key", "test-api-key"))
++        return server.expect(requestTo("http://ai.example.test/internal/core/chat"))
++                .andExpect(header("X-Core-Service-Key", SERVICE_KEY))
+                 .andExpect(method(HttpMethod.POST)).andExpect(content().contentType(MediaType.APPLICATION_JSON))
+-                .andExpect(content().json("{\"content\":\"Dinner?\"}"));
+-    }
+-
+-    private String invoiceItem(int lineNumber) {
+-        return "{\"items\":[{\"lineNumber\":" + lineNumber + ",\"description\":\"Product " + lineNumber
+-                + "\",\"productName\":\"Product " + lineNumber
+-                + "\",\"quantity\":1,\"unit\":\"UN\",\"unitOfMeasure\":\"UNIT\",\"unitPrice\":1,"
+-                + "\"totalPrice\":1,\"category\":\"GRAIN\",\"storagePlace\":\"PANTRY\",\"confidence\":1,"
+-                + "\"evidence\":\"Product " + lineNumber + "\"}],\"warnings\":[]}";
++                .andExpect(content().json("{\"userId\":\"123e4567-e89b-12d3-a456-426614174000\",\"message\":\"Dinner?\",\"stockId\":7,\"foodPreferences\":[\"VEGAN\"],\"sessionId\":" +
++                        (session == null ? "null" : "\"" + session + "\"") + "}"));
+     }
+ 
+     private FrigusAiPromptPayload payload(String session) {
+         return FrigusAiPromptPayload.builder().sessionId(session).stockId(7).message("Dinner?")
++                .userId("123e4567-e89b-12d3-a456-426614174000").foodPreferences(List.of("VEGAN"))
+                 .availableItems(List.of(item(1, "Rice"), item(2, "Beans"), item(3, "Carrot"), item(4, "Onion"))).build();
+     }
+ 
+diff --git a/src/test/java/com/frigus/coreapi/service/AiRecipeChatServiceTest.java b/src/test/java/com/frigus/coreapi/service/AiRecipeChatServiceTest.java
+index be90e20b113c020d1318481eb444d206ff957015..1ff7581badac48553d57dfd28da38d6d3061c197 100644
+--- a/src/test/java/com/frigus/coreapi/service/AiRecipeChatServiceTest.java
++++ b/src/test/java/com/frigus/coreapi/service/AiRecipeChatServiceTest.java
+@@ -283,7 +283,7 @@ class AiRecipeChatServiceTest {
+     }
+ 
+     @Test
+-    @DisplayName("Deve processar mensagem e utilizar sugestão da IA gravada no banco com validade nos ingredientes")
++    @DisplayName("Deve processar mensagem e utilizar sugestão da IA gravada no banco quando mencionada")
+     void shouldProcessUserMessageUsingAiSuggestionFromDatabase() {
+         AiRecipeChatRequestDto requestDto = AiRecipeChatRequestDto.builder()
+                 .stockId(1)
+@@ -292,8 +292,8 @@ class AiRecipeChatServiceTest {
+ 
+         FrigusAiRecipeResponse aiResponse = FrigusAiRecipeResponse.builder()
+                 .sessionId("ai-session-123")
+-                .chatMessage("Encontrei ótimas receitas no seu estoque!")
+-                .build(); // recipeName is null, indicating AI chat response with database suggestions
++                .chatMessage("Recomendo preparar a receita Refeição Prática com seu estoque!")
++                .build();
+ 
+         Recipe existingRecipe = Recipe.builder()
+                 .id(10)
+@@ -323,14 +323,14 @@ class AiRecipeChatServiceTest {
+         when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
+         when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
+         when(frigusAiClient.requestRecipeFromAi(any(FrigusAiPromptPayload.class))).thenReturn(aiResponse);
+-        when(recipeSuggestionRepository.findFirstByStockIdOrderByIdDesc(1)).thenReturn(Optional.of(aiSuggestion));
++        when(recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(1)).thenReturn(List.of(aiSuggestion));
+         when(ingredientService.findByRecipeId(10)).thenReturn(List.of(ingDto));
+ 
+         AiRecipeChatResponseDto response = service.processUserMessage(user, requestDto);
+ 
+         assertThat(response).isNotNull();
+         assertThat(response.getSessionId()).isEqualTo("ai-session-123");
+-        assertThat(response.getChatMessage()).isEqualTo("Encontrei ótimas receitas no seu estoque!");
++        assertThat(response.getChatMessage()).isEqualTo("Recomendo preparar a receita Refeição Prática com seu estoque!");
+         assertThat(response.getRecipeId()).isEqualTo(10);
+         assertThat(response.getRecipeName()).isEqualTo("Refeição Prática");
+         assertThat(response.getIngredients()).hasSize(1);
+@@ -338,4 +338,122 @@ class AiRecipeChatServiceTest {
+         assertThat(response.getIngredients().get(0).getExpireDate()).isEqualTo(stockProduct1.getExpireDate());
+         assertThat(response.getNearestExpireDate()).isEqualTo(stockProduct1.getExpireDate());
+     }
++
++    @Test
++    @DisplayName("Deve retornar apenas mensagem conversacional quando nenhuma receita for gerada ou mencionada")
++    void shouldReturnOnlyChatMessageWhenNoRecipeIsGeneratedOrMentioned() {
++        AiRecipeChatRequestDto requestDto = AiRecipeChatRequestDto.builder()
++                .stockId(1)
++                .message("Olá!")
++                .build();
++
++        FrigusAiRecipeResponse aiResponse = FrigusAiRecipeResponse.builder()
++                .sessionId("ai-session-456")
++                .chatMessage("Olá! Como posso te ajudar hoje?")
++                .build();
++
++        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
++        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
++        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
++        when(frigusAiClient.requestRecipeFromAi(any(FrigusAiPromptPayload.class))).thenReturn(aiResponse);
++        when(recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(1)).thenReturn(List.of());
++
++        AiRecipeChatResponseDto response = service.processUserMessage(user, requestDto);
++
++        assertThat(response).isNotNull();
++        assertThat(response.getSessionId()).isEqualTo("ai-session-456");
++        assertThat(response.getChatMessage()).isEqualTo("Olá! Como posso te ajudar hoje?");
++        assertThat(response.getRecipeId()).isNull();
++        assertThat(response.getRecipeName()).isNull();
++    }
++
++    @Test
++    void savesOnlyExplicitRecipeIdsFromTheCurrentTurnAndRefreshesExistingSuggestion() {
++        var request = AiRecipeChatRequestDto.builder().stockId(1).message("Receitas vegetarianas")
++                .foodPreferences(List.of("VEGETARIAN")).build();
++        var recipe = Recipe.builder().id(42).name("Tomate assado").active(true).instructions("Asse o tomate.").build();
++        var suggestion = RecipeSuggestion.builder().id(9).recipe(recipe).stock(stock).build();
++        var ingredient = IngredientResponseDto.builder().productId(20).productName("Tomate").build();
++        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
++        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
++        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
++        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
++                .sessionId("sessao").chatMessage("Uma sugestão para hoje").recipeIds(List.of(42, 42)).build());
++        when(recipeRepository.findById(42)).thenReturn(Optional.of(recipe));
++        when(ingredientService.findByRecipeId(42)).thenReturn(List.of(ingredient));
++        when(recipeSuggestionRepository.findFirstByStockIdAndRecipeIdOrderByIdDesc(1, 42)).thenReturn(Optional.of(suggestion));
++        when(recipeSuggestionRepository.save(suggestion)).thenReturn(suggestion);
++
++        var response = service.processUserMessage(user, request);
++
++        assertThat(response.getRecipeIds()).containsExactly(42);
++        assertThat(response.getRecipeId()).isEqualTo(42);
++        assertThat(response.getSuggestionId()).isEqualTo(9);
++        assertThat(response.getMatchedIngredients()).isEqualTo(1);
++        assertThat(ingredient.getInStock()).isTrue();
++        verify(recipeSuggestionRepository).save(suggestion);
++        verify(recipeSuggestionRepository, never()).findTop5ByStockIdOrderByIdDesc(any());
++        verify(recipeRepository, never()).save(any());
++        var payload = ArgumentCaptor.forClass(FrigusAiPromptPayload.class);
++        verify(frigusAiClient).requestRecipeFromAi(payload.capture());
++        assertThat(payload.getValue().getUserId()).isEqualTo(user.getId().toString());
++        assertThat(payload.getValue().getFoodPreferences()).containsExactly("VEGETARIAN");
++    }
++
++    @Test
++    void conversationalReplyWithEmptyIdsDoesNotAssociateAnOldRecipeByName() {
++        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
++        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
++        when(stockProductRepository.findByStockId(1)).thenReturn(List.of());
++        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
++                .sessionId("sessao").chatMessage("Olá!").recipeIds(List.of()).build());
++        var response = service.processUserMessage(user, AiRecipeChatRequestDto.builder().stockId(1).message("Olá").build());
++        assertThat(response.getRecipeId()).isNull();
++        verifyNoInteractions(recipeRepository, recipeSuggestionRepository, ingredientService);
++    }
++
++    @Test
++    void savedRecipeReadDoesNotTreatExpiredOrEmptyLotsAsAvailable() {
++        stockProduct1.setExpireDate(LocalDate.now().minusDays(1));
++        stockProduct2.setQuantity(0);
++        var recipe = Recipe.builder().id(42).name("Receita salva").build();
++        var suggestion = RecipeSuggestion.builder().id(9).recipe(recipe).stock(stock).build();
++        var first = IngredientResponseDto.builder().productId(10).build();
++        var second = IngredientResponseDto.builder().productId(20).build();
++        when(stockRepository.findById(1)).thenReturn(Optional.of(stock));
++        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
++        when(stockProductRepository.findByStockId(1)).thenReturn(List.of(stockProduct1, stockProduct2));
++        when(recipeSuggestionRepository.findByStockIdOrderByScoreDesc(1)).thenReturn(List.of(suggestion));
++        when(ingredientService.findByRecipeId(42)).thenReturn(List.of(first, second));
++        var result = service.getSuggestionsByStock(user, 1);
++        assertThat(result.get(0).getIngredients()).allSatisfy(ingredient -> {
++            assertThat(ingredient.getInStock()).isFalse();
++            assertThat(ingredient.getExpireDate()).isNull();
++        });
++    }
++    @Test
++    void forwardsTheExactRequestedStockAndItsNonemptyInventoryWithoutReplacingTheStockId() {
++        Stock requested = Stock.builder().id(1813).group(group).build();
++        Product juice = Product.builder().id(349).name("Suco de frutas").category(Category.BEVERAGE).build();
++        StockProduct lot = StockProduct.builder().id(34901).stock(requested).product(juice).quantity(43)
++                .expireDate(LocalDate.of(2028, 7, 28)).productStatus(ProductStatus.FRESH).build();
++        when(stockRepository.findById(1813)).thenReturn(Optional.of(requested));
++        when(userGroupRepository.existsByUserIdAndGroupId(user.getId(), group.getId())).thenReturn(true);
++        when(stockProductRepository.findByStockId(1813)).thenReturn(List.of(lot));
++        when(frigusAiClient.requestRecipeFromAi(any())).thenReturn(FrigusAiRecipeResponse.builder()
++                .sessionId("session").chatMessage("Resposta do serviço").recipeIds(List.of()).build());
++
++        service.processUserMessage(user, AiRecipeChatRequestDto.builder().stockId(1813).message("O que há no estoque?").build());
++
++        ArgumentCaptor<FrigusAiPromptPayload> payload = ArgumentCaptor.forClass(FrigusAiPromptPayload.class);
++        verify(frigusAiClient).requestRecipeFromAi(payload.capture());
++        assertThat(payload.getValue().getStockId()).isEqualTo(1813);
++        assertThat(payload.getValue().getAvailableItems()).singleElement().satisfies(item -> {
++            assertThat(item.getProductName()).isEqualTo("Suco de frutas");
++            assertThat(item.getQuantity()).isEqualTo(43);
++            assertThat(item.getExpireDate()).isEqualTo(LocalDate.of(2028, 7, 28));
++        });
++        verify(stockProductRepository, never()).findByStockId(1);
++        verifyNoInteractions(recipeRepository, recipeSuggestionRepository, ingredientService);
++    }
+ }

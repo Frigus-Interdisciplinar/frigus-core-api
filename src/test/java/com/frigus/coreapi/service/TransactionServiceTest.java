@@ -207,7 +207,7 @@ class TransactionServiceTest {
         when(planRepository.findByPlanCode("FREE")).thenReturn(Optional.of(freePlan));
         when(transactionRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         when(transactionRepository.save(any(Transaction.class))).thenReturn(freeTx);
-        when(subscriptionRepository.findByUserId(currentUser.getId())).thenReturn(Optional.empty());
+        when(subscriptionRepository.findByUserIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(Optional.empty());
         when(subscriptionRepository.save(any(Subscription.class))).thenReturn(freeSub);
         when(transactionMapper.toDto(freeTx)).thenReturn(responseDto);
 

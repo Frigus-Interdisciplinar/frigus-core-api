@@ -9,6 +9,7 @@ import com.frigus.coreapi.dto.ingredient.IngredientRequestDto;
 import com.frigus.coreapi.dto.ingredient.IngredientResponseDto;
 import com.frigus.coreapi.exception.ForbiddenException;
 import com.frigus.coreapi.exception.NotFoundException;
+import com.frigus.coreapi.exception.ServiceUnavailableException;
 import com.frigus.coreapi.model.Recipe;
 import com.frigus.coreapi.model.RecipeSuggestion;
 import com.frigus.coreapi.model.Stock;
@@ -52,6 +53,8 @@ public class AiRecipeChatService {
         validateUserAccess(currentUser, stock);
 
         List<StockProduct> stockProducts = stockProductRepository.findByStockId(stock.getId());
+        log.info("AI stock context: stockId={}, lotCount={}, positiveQuantityLots={}", stock.getId(), stockProducts.size(),
+                stockProducts.stream().filter(item -> item.getQuantity() != null && item.getQuantity() > 0).count());
 
         // Monta o payload para o serviço de IA com itens ordenados por proximidade da validade
         List<FrigusAiPromptPayload.StockItemPayload> itemsPayload = stockProducts.stream()
@@ -69,12 +72,16 @@ public class AiRecipeChatService {
         FrigusAiPromptPayload promptPayload = FrigusAiPromptPayload.builder()
                 .userId(currentUser != null && currentUser.getId() != null ? currentUser.getId().toString() : null)
                 .message(dto.getMessage())
-                .sessionId(dto.getSessionId()) // TODO: NAO PASSAR, IA JA GERA
+                .sessionId(dto.getSessionId())
                 .stockId(stock.getId())
+                .foodPreferences(dto.getFoodPreferences())
                 .availableItems(itemsPayload)
                 .build();
 
         FrigusAiRecipeResponse aiResponse = frigusAiClient.requestRecipeFromAi(promptPayload);
+        if (aiResponse.getRecipeIds() != null) {
+            return saveReportedSuggestions(aiResponse, stock, stockProducts);
+        }
 
         Recipe recipe;
         final List<IngredientResponseDto> savedIngredients = new ArrayList<>();
@@ -85,18 +92,21 @@ public class AiRecipeChatService {
         LocalDate nearestExpire;
 
         Optional<RecipeSuggestion> latestAiSuggestion = Optional.empty();
-        if (aiResponse.getRecipeName() == null) {
+        if (aiResponse.getRecipeName() == null || aiResponse.getRecipeName().isBlank()) {
             List<RecipeSuggestion> recent = recipeSuggestionRepository.findTop5ByStockIdOrderByIdDesc(stock.getId());
             if (recent != null && !recent.isEmpty()) {
                 String chatMsg = aiResponse.getChatMessage() != null ? aiResponse.getChatMessage().toLowerCase() : "";
                 latestAiSuggestion = recent.stream()
                         .filter(s -> s.getRecipe() != null && s.getRecipe().getName() != null &&
+                                !s.getRecipe().getName().isBlank() &&
                                 chatMsg.contains(s.getRecipe().getName().toLowerCase()))
-                        .findFirst()
-                        .or(() -> Optional.of(recent.get(recent.size() - 1)));
+                        .findFirst();
             }
             if (latestAiSuggestion.isEmpty()) {
-                latestAiSuggestion = recipeSuggestionRepository.findFirstByStockIdOrderByIdDesc(stock.getId());
+                return AiRecipeChatResponseDto.builder()
+                        .sessionId(aiResponse.getSessionId())
+                        .chatMessage(aiResponse.getChatMessage())
+                        .build();
             }
         }
 
@@ -214,6 +224,59 @@ public class AiRecipeChatService {
                 .build();
     }
 
+    private AiRecipeChatResponseDto saveReportedSuggestions(FrigusAiRecipeResponse reply, Stock stock,
+                                                            List<StockProduct> products) {
+        Map<Integer, LocalDate> available = products.stream()
+                .filter(p -> p.getQuantity() != null && p.getQuantity() > 0 && p.getExpireDate() != null &&
+                        !p.getExpireDate().isBefore(LocalDate.now()))
+                .collect(Collectors.toMap(p -> p.getProduct().getId(), StockProduct::getExpireDate,
+                        (a, b) -> a.isBefore(b) ? a : b));
+        List<Integer> ids = reply.getRecipeIds().stream().distinct().toList();
+        AiRecipeChatResponseDto result = AiRecipeChatResponseDto.builder()
+                .sessionId(reply.getSessionId()).chatMessage(reply.getChatMessage()).recipeIds(ids).build();
+        for (Integer id : ids) {
+            Recipe recipe = recipeRepository.findById(id)
+                    .filter(r -> !Boolean.FALSE.equals(r.getActive()))
+                    .orElseThrow(() -> new ServiceUnavailableException("Sugestão não confirmada", "Não foi possível confirmar a receita sugerida. Consulte as receitas salvas antes de tentar novamente."));
+            List<IngredientResponseDto> ingredients = ingredientService.findByRecipeId(id);
+            int matched = 0;
+            LocalDate nearest = null;
+            for (IngredientResponseDto ingredient : ingredients) {
+                LocalDate expiry = available.get(ingredient.getProductId());
+                ingredient.setInStock(expiry != null);
+                ingredient.setExpireDate(expiry);
+                if (expiry != null) {
+                    matched++;
+                    if (nearest == null || expiry.isBefore(nearest)) nearest = expiry;
+                }
+            }
+            int missing = ingredients.size() - matched;
+            BigDecimal score = ingredients.isEmpty() ? BigDecimal.ZERO :
+                    BigDecimal.valueOf(matched).divide(BigDecimal.valueOf(ingredients.size()), 3, RoundingMode.HALF_UP);
+            RecipeSuggestion suggestion = recipeSuggestionRepository
+                    .findFirstByStockIdAndRecipeIdOrderByIdDesc(stock.getId(), id)
+                    .orElseGet(() -> RecipeSuggestion.builder().recipe(recipe).stock(stock).createdAt(Instant.now()).build());
+            suggestion.setMatchedIngredients(matched);
+            suggestion.setMissingIngredients(missing);
+            suggestion.setScore(score);
+            suggestion.setNearestExpireDate(nearest);
+            suggestion = recipeSuggestionRepository.save(suggestion);
+            if (result.getRecipeId() == null) {
+                result.setRecipeId(id);
+                result.setRecipeName(recipe.getName());
+                result.setRecipeDescription(recipe.getDescription());
+                result.setRecipeInstructions(recipe.getInstructions());
+                result.setIngredients(ingredients);
+                result.setSuggestionId(suggestion.getId());
+                result.setMatchedIngredients(matched);
+                result.setMissingIngredients(missing);
+                result.setScore(score);
+                result.setNearestExpireDate(nearest);
+            }
+        }
+        return result;
+    }
+
     @Transactional(readOnly = true)
     public List<AiRecipeChatResponseDto> getSuggestionsByStock(User currentUser, Integer stockId) {
         Stock stock = stockRepository.findById(stockId)
@@ -223,16 +286,14 @@ public class AiRecipeChatService {
 
         List<StockProduct> stockProducts = stockProductRepository.findByStockId(stock.getId());
         Map<Integer, LocalDate> stockExpireMap = stockProducts.stream()
-                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null && sp.getExpireDate() != null)
+                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null && sp.getExpireDate() != null &&
+                        sp.getQuantity() != null && sp.getQuantity() > 0 && !sp.getExpireDate().isBefore(LocalDate.now()))
                 .collect(Collectors.toMap(
                         sp -> sp.getProduct().getId(),
                         StockProduct::getExpireDate,
                         (d1, d2) -> d1.isBefore(d2) ? d1 : d2
                 ));
-        Set<Integer> availableProductIds = stockProducts.stream()
-                .filter(sp -> sp.getProduct() != null && sp.getProduct().getId() != null)
-                .map(sp -> sp.getProduct().getId())
-                .collect(Collectors.toSet());
+        Set<Integer> availableProductIds = stockExpireMap.keySet();
 
         return recipeSuggestionRepository.findByStockIdOrderByScoreDesc(stockId).stream()
                 .map(sugg -> {
@@ -240,9 +301,7 @@ public class AiRecipeChatService {
                     for (IngredientResponseDto ing : ingredients) {
                         boolean inStock = ing.getProductId() != null && availableProductIds.contains(ing.getProductId());
                         ing.setInStock(inStock);
-                        if (inStock) {
-                            ing.setExpireDate(stockExpireMap.get(ing.getProductId()));
-                        }
+                        ing.setExpireDate(stockExpireMap.get(ing.getProductId()));
                     }
 
                     return AiRecipeChatResponseDto.builder()
