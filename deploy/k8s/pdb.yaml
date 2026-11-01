@@ -4,7 +4,7 @@ metadata:
   name: core-api
   namespace: frigus
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: core-api
@@ -15,7 +15,7 @@ metadata:
   name: bff
   namespace: frigus
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: bff
