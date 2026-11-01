@@ -1,11 +1,15 @@
 package com.frigus.coreapi.security;
 
+import com.frigus.coreapi.dto.ErrorResponseDto;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
@@ -19,6 +23,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
+import java.io.IOException;
+import java.time.Instant;
 
 @Configuration
 @EnableMethodSecurity
@@ -34,7 +40,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, SecurityFilter securityFilter,
                                            RateLimitFilter rateLimitFilter,
-                                           CorsConfigurationSource corsConfigurationSource) throws Exception {
+                                           CorsConfigurationSource corsConfigurationSource,
+                                           ObjectMapper objectMapper) throws Exception {
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookieCustomizer(cookie -> cookie.secure(true).sameSite("None"));
         http.cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -74,9 +81,25 @@ public class SecurityConfig {
                                 "/products/*")
                         .permitAll()
                         .anyRequest().authenticated())
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, exception) -> writeProblem(
+                                response, objectMapper, HttpServletResponse.SC_FORBIDDEN,
+                                "FORBIDDEN", "Acesso negado", "Faça login para continuar"))
+                        .accessDeniedHandler((request, response, exception) -> writeProblem(
+                                response, objectMapper, HttpServletResponse.SC_FORBIDDEN,
+                                "FORBIDDEN", "Acesso negado", "Você não tem permissão para esta operação")))
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, SecurityFilter.class);
         return http.build();
+    }
+
+    private void writeProblem(HttpServletResponse response, ObjectMapper objectMapper,
+                              int status, String code,
+                              String message, String displayMessage) throws IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        objectMapper.writeValue(response.getOutputStream(), new ErrorResponseDto(
+                status, code, message, displayMessage, Instant.now()));
     }
 
     @Bean
@@ -92,7 +115,6 @@ public class SecurityConfig {
         return source;
     }
 
-    // argon2 password encoder
     @Bean
     public PasswordEncoder passwordEncoder() {
         return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();

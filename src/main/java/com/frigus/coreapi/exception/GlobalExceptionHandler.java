@@ -3,6 +3,7 @@ package com.frigus.coreapi.exception;
 import com.frigus.coreapi.dto.ErrorResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -97,7 +98,9 @@ public class GlobalExceptionHandler {
                 "Ocorreu um erro inesperado. Tente novamente mais tarde.",
                 Instant.now()
         );
-        return ResponseEntity.internalServerError().body(body);
+        return ResponseEntity.internalServerError()
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
     }
 
     private ResponseEntity<ErrorResponseDto> buildResponse(AppException ex) {
@@ -108,6 +111,8 @@ public class GlobalExceptionHandler {
                 ex.getDisplayMessage(),
                 ex.getTimestamp()
         );
-        return ResponseEntity.status(ex.getStatus()).body(body);
+        return ResponseEntity.status(ex.getStatus())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
     }
 }
