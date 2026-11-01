@@ -7,20 +7,33 @@ metadata:
     app.kubernetes.io/name: core-api
     app.kubernetes.io/part-of: frigus
 spec:
-  replicas: 1
+  replicas: 2
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: core-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
         app.kubernetes.io/name: core-api
         app.kubernetes.io/part-of: frigus
     spec:
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: core-api
-          image: 240495665702.dkr.ecr.us-east-1.amazonaws.com/frigus-core-api:dev-2
+          # The Kustomize images section pins this to the ECR release image.
+          image: frigus-core-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -37,6 +50,14 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           startupProbe:
             httpGet:
               path: /actuator/health
@@ -47,11 +68,16 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: http
-            initialDelaySeconds: 30
             periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}

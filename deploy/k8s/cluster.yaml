@@ -2,28 +2,25 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: frigus-cluster
-  region: us-east-1
+  name: frigus-prod
+  # Set this to the AWS Region you choose before creating the cluster.
+  region: sa-east-1
 
 iam:
-  withOIDC: false
-  serviceRoleARN: arn:aws:iam::240495665702:role/LabRole
-
-autoModeConfig:
-  enabled: false
-
-vpc:
-  nat:
-    gateway: Disable
+  # Required for IAM Roles for Service Accounts (AWS Load Balancer Controller).
+  withOIDC: true
 
 managedNodeGroups:
-  - name: core-api-nodes
+  - name: app-nodes
     instanceType: t3.medium
-    desiredCapacity: 1
-    minSize: 1
-    maxSize: 2
-    volumeSize: 20
-    iam:
-      instanceRoleARN: arn:aws:iam::240495665702:role/LabRole
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 30
+    privateNetworking: true
     labels:
-      workload: core-api
+      workload: frigus-apps
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "audit", "authenticator"]
