@@ -17,11 +17,13 @@ import com.frigus.coreapi.model.Conversation;
 import com.frigus.coreapi.model.ConversationParticipant;
 import com.frigus.coreapi.model.ConversationParticipantId;
 import com.frigus.coreapi.model.Group;
+import com.frigus.coreapi.model.Stock;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.model.UserGroup;
 import com.frigus.coreapi.repository.ConversationParticipantRepository;
 import com.frigus.coreapi.repository.ConversationRepository;
 import com.frigus.coreapi.repository.GroupRepository;
+import com.frigus.coreapi.repository.StockRepository;
 import com.frigus.coreapi.repository.UserGroupRepository;
 import com.frigus.coreapi.repository.UserRepository;
 import com.frigus.coreapi.utils.ServiceUtils;
@@ -44,6 +46,7 @@ import java.util.UUID;
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final StockRepository stockRepository;
     private final UserGroupRepository userGroupRepository;
     private final UserRepository userRepository;
     private final ConversationRepository conversationRepository;
@@ -160,6 +163,57 @@ public class GroupService {
         conversationParticipantRepository.save(cp);
 
         return groupMapper.toDtoWithMembers(group, List.of(userGroup), defaultConversation.getId());
+    }
+
+    /**
+     * Creates the default workspace required by the web app immediately after
+     * account creation. This is system provisioning, so it deliberately does
+     * not use the request's current-user context or the user-selected plan.
+     */
+    @Transactional
+    public void provisionInitialWorkspace(User user) {
+        if (groupRepository.existsByOwnerIdAndDeletedAtIsNull(user.getId())) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        Group group = groupRepository.save(Group.builder()
+                .owner(user)
+                .name(user.getName())
+                .timeZone("America/Sao_Paulo")
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+
+        userGroupRepository.save(UserGroup.builder()
+                .user(user)
+                .group(group)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+
+        Conversation conversation = conversationRepository.save(Conversation.builder()
+                .conversationType(ConversationType.GROUP)
+                .group(group)
+                .name(group.getName())
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+
+        conversationParticipantRepository.save(ConversationParticipant.builder()
+                .id(new ConversationParticipantId(conversation.getId(), user.getId()))
+                .conversation(conversation)
+                .user(user)
+                .joinedAt(now)
+                .updatedAt(now)
+                .build());
+
+        stockRepository.save(Stock.builder()
+                .group(group)
+                .name("Estoque principal")
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
     }
 
     @Transactional

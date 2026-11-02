@@ -208,7 +208,7 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
                 .orElseThrow(() -> new NotFoundException());
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
 
-        if (list.getStatus() != ListStatus.COMPLETED) {
+        if (list.getCompletedAt() == null) {
             list.setCompletedAt(Instant.now());
         }
         if (supplier != null) {
@@ -259,6 +259,9 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
                 List.of(ProductListStatus.PURCHASED, ProductListStatus.REMOVED));
 
         if (!hasPending) {
+            if (list.getCompletedAt() == null) {
+                list.setCompletedAt(Instant.now());
+            }
             list.setStatus(ListStatus.COMPLETED);
             repository.save(list);
         }
