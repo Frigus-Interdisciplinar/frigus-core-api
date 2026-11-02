@@ -80,11 +80,11 @@ public class SecurityConfig {
                                 "/products",
                                 "/products/*")
                         .permitAll()
-                        .anyRequest().authenticated())
+                .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> writeProblem(
-                                response, objectMapper, HttpServletResponse.SC_FORBIDDEN,
-                                "FORBIDDEN", "Acesso negado", "Faça login para continuar"))
+                                response, objectMapper, HttpServletResponse.SC_UNAUTHORIZED,
+                                "UNAUTHORIZED", "Autenticação necessária", "Faça login para continuar"))
                         .accessDeniedHandler((request, response, exception) -> writeProblem(
                                 response, objectMapper, HttpServletResponse.SC_FORBIDDEN,
                                 "FORBIDDEN", "Acesso negado", "Você não tem permissão para esta operação")))

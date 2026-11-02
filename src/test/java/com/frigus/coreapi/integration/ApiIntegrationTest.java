@@ -130,7 +130,7 @@ class ApiIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"/profile", "/user", "/groups", "/conversations", "/transactions", "/subscriptions/me", "/stocks", "/stock-products", "/discard", "/ingredients", "/ai/recipes/suggestions/stock/1"})
     void rejectsProtectedRoutesWithoutCredentials(String route) throws Exception {
-        mvc.perform(get(route)).andExpect(status().isForbidden());
+        mvc.perform(get(route)).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -152,7 +152,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(owner.getId().toString()))
                 .andExpect(jsonPath("$.hashPassword").doesNotExist());
         mvc.perform(get("/profile"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         jdbc.update("UPDATE users SET role='ADMIN' WHERE id=?", owner.getId());
         mvc.perform(get("/user").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
     }
@@ -177,14 +177,14 @@ class ApiIntegrationTest {
     void rejectsInvalidBearerEvenWhenRequestIncludesCookieCredentials() throws Exception {
         mvc.perform(get("/profile").header("Authorization", "Bearer invalid")
                         .header("Cookie", "accessToken=" + tokens.generateAccessToken(owner)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void rejectsTokenAfterUserIsDeleted() throws Exception {
         String token = tokens.generateAccessToken(admin);
         jdbc.update("DELETE FROM users WHERE id=?", admin.getId());
-        mvc.perform(get("/profile").header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
+        mvc.perform(get("/profile").header("Authorization", "Bearer " + token)).andExpect(status().isUnauthorized());
     }
 
     @ParameterizedTest
@@ -308,7 +308,7 @@ class ApiIntegrationTest {
 
         mvc.perform(post("/shopping-lists").header("Authorization", "Bearer invalid").cookie(authCookie)
                         .contentType("application/json").content("{\"stockId\":" + stockId + "}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         assertThat(count("shopping_lists")).isEqualTo(1);
 
         mvc.perform(post("/auth/refresh").header("Authorization", "Bearer " + tokens.generateAccessToken(owner))
@@ -732,7 +732,7 @@ class ApiIntegrationTest {
         var profileUri = java.net.URI.create("http://127.0.0.1:" + port + "/profile");
         assertThat(client.send(java.net.http.HttpRequest.newBuilder(profileUri)
                         .timeout(java.time.Duration.ofSeconds(10)).GET().build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+                java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
         var profile = client.send(java.net.http.HttpRequest.newBuilder(profileUri)
                         .timeout(java.time.Duration.ofSeconds(10))
                         .header("Authorization", "Bearer " + tokens.generateAccessToken(owner)).GET().build(),
@@ -783,9 +783,9 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void anonymousRecipeCreationIsForbiddenWithoutPersisting() throws Exception {
+    void anonymousRecipeCreationIsUnauthorizedWithoutPersisting() throws Exception {
         mvc.perform(post("/recipes").contentType("application/json").content("{\"name\":\"Soup\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         assertThat(count("recipes")).isZero();
     }
 

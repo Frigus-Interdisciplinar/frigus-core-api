@@ -1,6 +1,7 @@
 package com.frigus.coreapi.service;
 
 import com.frigus.coreapi.dto.user.*;
+import com.frigus.coreapi.enums.AccountType;
 import com.frigus.coreapi.exception.BadRequestException;
 import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.UserMapper;
@@ -50,30 +51,30 @@ class UserProfileServiceTest {
     }
 
     @Test
-    void updatesAccountTypeWhilePlanSelectionIsPending() {
+    void updatesAccountTypeOnlyWhilePlanSelectionIsRequired() {
         user.setPlanSelectionRequired(true);
-        var dto = UserAccountTypeUpdateDto.builder().accountType(com.frigus.coreapi.enums.AccountType.COMMERCIAL).build();
-        UserResponseDto response = UserResponseDto.builder().id(user.getId()).build();
+        var request = UserAccountTypeUpdateDto.builder().accountType(AccountType.COMMERCIAL).build();
+        var response = UserResponseDto.builder().id(user.getId()).accountType(AccountType.COMMERCIAL).build();
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         when(repository.save(user)).thenReturn(user);
         when(mapper.toDto(user)).thenReturn(response);
 
-        assertThat(service.updateOnboardingAccountType(user, dto)).isSameAs(response);
-        assertThat(user.getAccountType()).isEqualTo(com.frigus.coreapi.enums.AccountType.COMMERCIAL);
+        assertThat(service.updateOnboardingAccountType(user, request)).isSameAs(response);
+        assertThat(user.getAccountType()).isEqualTo(AccountType.COMMERCIAL);
         verify(repository).save(user);
     }
 
     @Test
-    void rejectsAccountTypeChangesAfterPlanSelectionOrDuringPendingPayment() {
-        var dto = UserAccountTypeUpdateDto.builder().accountType(com.frigus.coreapi.enums.AccountType.COMMERCIAL).build();
+    void rejectsAccountTypeChangesOutsideOnboardingOrWithPendingCheckout() {
+        var request = UserAccountTypeUpdateDto.builder().accountType(AccountType.COMMERCIAL).build();
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
-        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, dto))
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, request))
                 .isInstanceOf(BadRequestException.class);
         verify(repository, never()).save(any());
 
         user.setPlanSelectionRequired(true);
         user.setPendingPlanTransactionId(UUID.randomUUID());
-        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, dto))
+        assertThatThrownBy(() -> service.updateOnboardingAccountType(user, request))
                 .isInstanceOf(BadRequestException.class);
         verify(repository, never()).save(any());
     }
