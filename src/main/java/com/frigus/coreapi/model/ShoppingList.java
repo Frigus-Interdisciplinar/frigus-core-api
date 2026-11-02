@@ -1,0 +1,82 @@
+package com.frigus.coreapi.model;
+
+import com.frigus.coreapi.enums.ListStatus;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "shopping_lists")
+public class ShoppingList {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @ColumnDefault("gen_random_uuid()")
+    @Column(name = "id", nullable = false)
+    private UUID id;
+
+    @NotNull
+    @ColumnDefault("CURRENT_DATE")
+    @Column(name = "date", nullable = false)
+    private LocalDate date;
+
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JoinColumn(name = "stock_id", nullable = false)
+    private Stock stock;
+
+    @Column(name = "status", columnDefinition = "list_status_enum not null")
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    private ListStatus status;
+    @Builder.Default @Column(nullable=false,length=255) private String name="Lista de compras";
+    @Column(length=255) private String supplier;
+    @Column(precision=12,scale=2) private java.math.BigDecimal total;
+    private Instant completedAt;
+
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+        if (date == null) {
+            date = LocalDate.now();
+        }
+        if (status == null) {
+            status = ListStatus.OPEN;
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
+}

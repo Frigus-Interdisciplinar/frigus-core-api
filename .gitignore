@@ -1,5 +1,7 @@
 HELP.md
 target/
+.test-build/
+.test-evidence/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -33,4 +35,14 @@ build/
 .vscode/
 
 .env
+.env.production
+/deploy/k8s/secrets.yaml
+/deploy/aws/*.env
 node_modules
+.tools/
+
+# Local Codex worktrees, validation caches, and generated task artifacts
+/.codex-mobile-worktrees/
+/.gradle-validation-cache/
+/outputs/
+/tmp/

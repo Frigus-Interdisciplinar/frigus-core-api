@@ -1,0 +1,107 @@
+package com.frigus.coreapi.model;
+
+import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.enums.SubscriptionStatus;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @ColumnDefault("gen_random_uuid()")
+    @Column(name = "id", nullable = false)
+    private UUID id;
+
+    @NotNull
+    @Column(name = "name", nullable = false, length = Integer.MAX_VALUE)
+    private String name;
+
+    @Column(name = "profile_picture_url", length = 2048)
+    private String profilePictureUrl;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @Column(name = "account_type", columnDefinition = "account_type_enum not null")
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    private AccountType accountType;
+
+    @NotNull
+    @Column(name = "email", nullable = false, length = Integer.MAX_VALUE)
+    private String email;
+
+    @Builder.Default
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = true;
+
+    @Column(name = "plan_selection_required", nullable = false)
+    private boolean planSelectionRequired;
+
+    @Column(name = "pending_plan_transaction_id")
+    private UUID pendingPlanTransactionId;
+
+    @Column(name = "hash_password", length = Integer.MAX_VALUE)
+    private String hashPassword;
+
+    @Column(name = "google_id", length = 255, unique = true)
+    private String googleId;
+
+    @NotNull
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @ColumnDefault("USER")
+    @Column(name = "role", nullable = false, columnDefinition = "user_role_enum not null")
+    private Role role;
+
+    @Builder.Default
+    @Column(nullable=false)
+    private int tokenVersion=0;
+    private Instant deletedAt;
+
+    @OneToOne(mappedBy = "user", fetch = FetchType.EAGER)
+    private Subscription subscription;
+
+
+    public String getPlanNameFromUser() {
+        Subscription subscription = this.getSubscription();
+
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            return subscription.getPlan().getName();
+        }
+
+        return "Frigus Free";
+    }
+
+    public String getPlanCodeFromUser() {
+        Subscription subscription = this.getSubscription();
+
+        if (subscription != null && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            return subscription.getPlan().getPlanCode();
+        }
+
+        return "FREE";
+    }
+}

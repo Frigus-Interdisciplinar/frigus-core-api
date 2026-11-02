@@ -1,0 +1,56 @@
+package com.frigus.coreapi.mapper;
+
+import com.frigus.coreapi.dto.product.ProductCreateRequestDto;
+import com.frigus.coreapi.dto.product.ProductResponseDto;
+import com.frigus.coreapi.model.Product;
+import org.springframework.stereotype.Component;
+
+@Component
+public class ProductMapper implements BaseMapper<Product, ProductResponseDto, ProductCreateRequestDto> {
+    @Override
+    public ProductResponseDto toDto(Product product) {
+        if (product == null) {
+            return null;
+        }
+
+        return ProductResponseDto.builder()
+                .id(product.getId())
+                .name(product.getName()).brand(product.getBrand()).imageUrl(product.getImageUrl())
+                .ownerGroupId(product.getOwnerGroup()==null ? null : product.getOwnerGroup().getId())
+                .category(product.getCategory())
+                .storagePlace(product.getStoragePlace())
+                .unitPrice(product.getUnitPrice())
+                .unitOfMeasure(product.getUnitOfMeasure())
+                .brand(product.getBrand())
+                .imageUrl(product.getImageUrl())
+                .createdAt(product.getCreatedAt())
+                .ownerGroupId(product.getOwnerGroupId())
+                .build();
+    }
+
+    @Override
+    public Product toEntity(ProductCreateRequestDto dto) {
+        if (dto == null) {
+            return null;
+        }
+
+        return Product.builder()
+                .name(dto.getName().trim()).brand(dto.getBrand()).imageUrl(dto.getImageUrl())
+                .category(dto.getCategory())
+                .storagePlace(dto.getStoragePlace())
+                .unitPrice(dto.getUnitPrice())
+                .unitOfMeasure(dto.getUnitOfMeasure())
+                .brand(normalizeOptional(dto.getBrand()))
+                .imageUrl(normalizeOptional(dto.getImageUrl()))
+                .ownerGroupId(dto.getOwnerGroupId())
+                .build();
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+}

@@ -1,0 +1,50 @@
+package com.frigus.coreapi.repository;
+
+import com.frigus.coreapi.enums.ListStatus;
+import com.frigus.coreapi.enums.ProductListStatus;
+import com.frigus.coreapi.model.ShoppingList;
+import com.frigus.coreapi.model.ShoppingListProduct;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface ShoppingListProductRepository extends BaseRepository<ShoppingListProduct, Integer> {
+    List<ShoppingListProduct> findByListId(UUID listId);
+
+    List<ShoppingListProduct> findByListIdOrderByCreatedAtAsc(UUID listId);
+
+    Page<ShoppingListProduct> findByListId(UUID listId, Pageable pageable);
+
+    Page<ShoppingListProduct> findByListIdAndStatus(UUID listId, ProductListStatus status, Pageable pageable);
+
+    Optional<ShoppingListProduct> findByListIdAndProductId(UUID listId, Integer productId);
+
+    boolean existsByListIdAndProductId(UUID listId, Integer productId);
+
+    long countByListId(UUID listId);
+
+    long countByListIdAndStatus(UUID listId, ProductListStatus status);
+
+    boolean existsByListIdAndStatusNotIn(UUID listId, Collection<ProductListStatus> statuses);
+
+    void deleteByListId(UUID listId);
+
+    @Query("select distinct slp.list from ShoppingListProduct slp "
+            + "where slp.status = :status and slp.createdAt <= :createdOnOrBefore "
+            + "and slp.list.status = :listStatus and slp.list.stock.deletedAt is null and slp.list.stock.group.deletedAt is null")
+    List<ShoppingList> findListsWithPendingProductsCreatedOnOrBefore(
+            @Param("status") ProductListStatus status,
+            @Param("listStatus") ListStatus listStatus,
+            @Param("createdOnOrBefore") Instant createdOnOrBefore);
+    @Query("select count(i) from ShoppingListProduct i where i.list.stock.group.id=:groupId and i.list.stock.deletedAt is null and str(i.list.status)='OPEN' and str(i.status)='PENDING'")
+    long countPendingForGroup(@Param("groupId") UUID groupId);
+}

@@ -1,0 +1,118 @@
+package com.frigus.coreapi.exception;
+
+import com.frigus.coreapi.dto.ErrorResponseDto;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import java.time.Instant;
+
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponseDto> handleAccessDenied(AccessDeniedException ex) {
+        return buildResponse(new ForbiddenException("Acesso negado", "Você não tem permissão para esta operação"));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponseDto> handleValidation(MethodArgumentNotValidException ex) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getDefaultMessage())
+                .sorted()
+                .distinct()
+                .collect(java.util.stream.Collectors.joining("; "));
+        return buildResponse(new BadRequestException("Dados inválidos", message));
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ErrorResponseDto> handleInvalidRequest(Exception ex) {
+        return buildResponse(new BadRequestException("Requisição inválida", "Verifique o formato e os campos obrigatórios da requisição"));
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ErrorResponseDto> handleBadRequest(BadRequestException ex) {
+        log.warn("Bad Request: {}", ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponseDto> handleUnauthorized(UnauthorizedException ex) {
+        log.warn("Unauthorized: {}", ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponseDto> handleForbidden(ForbiddenException ex) {
+        log.warn("Forbidden: {}", ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleNotFound(NotFoundException ex) {
+        log.warn("Not Found: {}", ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponseDto> handleConflict(ConflictException ex) {
+        log.warn("Conflict: {}", ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(InternalServerError.class)
+    public ResponseEntity<ErrorResponseDto> handleInternalServerError(InternalServerError ex) {
+        log.error("Internal Server Error: {}", ex.getMessage(), ex);
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponseDto> handleServiceUnavailable(ServiceUnavailableException ex) {
+        log.error("Service Unavailable: {}", ex.getMessage(), ex);
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<ErrorResponseDto> handleAppException(AppException ex) {
+        log.warn("Erro de domínio {}: {}", ex.getCode(), ex.getMessage());
+        return buildResponse(ex);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponseDto> handleGeneric(Exception ex) {
+        log.error("Exceção não tratada: {}", ex.getMessage(), ex);
+
+        ErrorResponseDto body = new ErrorResponseDto(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "INTERNAL_SERVER_ERROR",
+                "Erro interno do servidor",
+                "Ocorreu um erro inesperado. Tente novamente mais tarde.",
+                Instant.now()
+        );
+        return ResponseEntity.internalServerError()
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
+    }
+
+    private ResponseEntity<ErrorResponseDto> buildResponse(AppException ex) {
+        ErrorResponseDto body = new ErrorResponseDto(
+                ex.getStatus(),
+                ex.getCode(),
+                ex.getMessage(),
+                ex.getDisplayMessage(),
+                ex.getTimestamp()
+        );
+        return ResponseEntity.status(ex.getStatus())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
+    }
+}

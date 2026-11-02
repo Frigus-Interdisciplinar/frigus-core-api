@@ -1,0 +1,313 @@
+package com.frigus.coreapi.service;
+
+import com.frigus.coreapi.dto.message.MessageResponseDto;
+import com.frigus.coreapi.dto.message.MessageSendDto;
+import com.frigus.coreapi.enums.MessageType;
+import com.frigus.coreapi.exception.ForbiddenException;
+import com.frigus.coreapi.mapper.MessageMapper;
+import com.frigus.coreapi.model.Conversation;
+import com.frigus.coreapi.model.ConversationParticipant;
+import com.frigus.coreapi.model.ConversationParticipantId;
+import com.frigus.coreapi.model.Group;
+import com.frigus.coreapi.model.Message;
+import com.frigus.coreapi.model.ShoppingListProduct;
+import com.frigus.coreapi.model.ShoppingList;
+import com.frigus.coreapi.model.Stock;
+import com.frigus.coreapi.model.User;
+import com.frigus.coreapi.repository.ConversationParticipantRepository;
+import com.frigus.coreapi.repository.ConversationRepository;
+import com.frigus.coreapi.repository.MessageReadRepository;
+import com.frigus.coreapi.repository.MessageRepository;
+import com.frigus.coreapi.repository.MessageAttachmentRepository;
+import com.frigus.coreapi.repository.MessageReactionRepository;
+import com.frigus.coreapi.repository.ShoppingListProductRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class MessageServiceTest {
+    @Test
+    void departedParticipantCannotSendMessageOrBroadcast() {
+        sampleParticipant.setLeftAt(Instant.parse("2020-01-01T00:00:00Z"));
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser,
+                MessageSendDto.builder().conversationId(sampleConversation.getId()).content("Hello").build()))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messagingTemplate, messageMapper);
+    }
+
+    @Test
+    void missingConversationAndGroupIsBadRequestWithoutWritingOrBroadcasting() {
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser, MessageSendDto.builder().content("Hello").build()))
+                .isInstanceOf(com.frigus.coreapi.exception.BadRequestException.class);
+        verifyNoInteractions(conversationRepository, messageRepository, messagingTemplate);
+    }
+
+    @Test
+    void unauthenticatedRestMessageCannotReadOrWriteConversation() {
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> messageService.sendMessage(null,
+                MessageSendDto.builder().conversationId(sampleConversation.getId()).content("Hello").build()))
+                .isInstanceOf(com.frigus.coreapi.exception.UnauthorizedException.class);
+        verifyNoInteractions(conversationRepository, messageRepository, messagingTemplate);
+    }
+
+    @Test
+    void rejectsHistoryForInactiveParticipantBeforeReadingMessages() {
+        UUID conversationId = sampleConversation.getId();
+        assertThatThrownBy(() -> messageService.getMessagesHistory(conversationId, PageRequest.of(0, 10)))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messageMapper);
+    }
+
+    @Test
+    void refusesReadReceiptFromNonParticipantWithoutWriting() {
+        assertThatThrownBy(() -> messageService.markAsRead(sampleConversation.getId(), 1))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messageReadRepository);
+    }
+
+    @Test
+    void repeatedReadReceiptDoesNotCreateDuplicateRecord() {
+        UUID conversationId = sampleConversation.getId();
+        when(conversationParticipantRepository.isUserActiveParticipant(conversationId, currentUser.getId())).thenReturn(true);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(sampleConversation));
+        when(messageRepository.findById(1)).thenReturn(Optional.of(Message.builder().id(1)
+                .conversationParticipants(sampleParticipant).build()));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(conversationId, currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+        when(messageReadRepository.existsByIdMessageIdAndIdUserId(1, currentUser.getId())).thenReturn(true);
+
+        messageService.markAsRead(conversationId, 1);
+
+        verify(messageReadRepository, never()).save(any());
+    }
+
+
+    @Mock
+    private MessageRepository messageRepository;
+
+    @Mock
+    private ConversationRepository conversationRepository;
+
+    @Mock
+    private ConversationParticipantRepository conversationParticipantRepository;
+
+    @Mock
+    private MessageReadRepository messageReadRepository;
+
+    @Mock
+    private MessageAttachmentRepository messageAttachmentRepository;
+
+    @Mock
+    private MessageReactionRepository messageReactionRepository;
+
+    @Mock
+    private ShoppingListProductRepository shoppingListProductRepository;
+
+    @Mock
+    private MessageMapper messageMapper;
+
+    @Mock
+    private SimpMessagingTemplate messagingTemplate;
+
+    @Mock
+    private GroupAccessService groupAccessService;
+
+    @InjectMocks
+    private MessageService messageService;
+
+    private User currentUser;
+    private Conversation sampleConversation;
+    private ConversationParticipant sampleParticipant;
+
+    @BeforeEach
+    void setUp() {
+        currentUser = User.builder()
+                .id(UUID.randomUUID())
+                .name("Gabriel")
+                .email("gabriel@test.com")
+                .build();
+
+        sampleConversation = Conversation.builder()
+                .id(UUID.randomUUID())
+                .build();
+
+        sampleParticipant = ConversationParticipant.builder()
+                .id(new ConversationParticipantId(sampleConversation.getId(), currentUser.getId()))
+                .conversation(sampleConversation)
+                .user(currentUser)
+                .build();
+
+        var auth = new UsernamePasswordAuthenticationToken(currentUser, null, List.of());
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    @DisplayName("Deve enviar mensagem com sucesso e publicar no WebSocket (tópico de conversa e tópicos de grupo)")
+    void shouldSendMessageSuccessfully() {
+        Group group = Group.builder().id(UUID.randomUUID()).name("Família").build();
+        sampleConversation.setGroup(group);
+
+        MessageSendDto dto = MessageSendDto.builder()
+                .conversationId(sampleConversation.getId())
+                .messageType(MessageType.TEXT)
+                .content("Olá família!")
+                .build();
+
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+
+        Message savedMessage = Message.builder()
+                .id(1)
+                .conversationParticipants(sampleParticipant)
+                .content("Olá família!")
+                .messageType(MessageType.TEXT)
+                .createdAt(Instant.now())
+                .build();
+
+        when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+
+        MessageResponseDto responseDto = MessageResponseDto.builder()
+                .id(1)
+                .conversationId(sampleConversation.getId())
+                .senderId(currentUser.getId())
+                .content("Olá família!")
+                .build();
+        when(messageMapper.toDto(savedMessage)).thenReturn(responseDto);
+
+        MessageResponseDto result = messageService.sendMessage(currentUser, dto);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).isEqualTo("Olá família!");
+        verify(messageRepository).save(any(Message.class));
+        verify(messagingTemplate).convertAndSend(eq("/topic/conversations." + sampleConversation.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId() + ".messages"), eq(responseDto));
+    }
+
+    @Test
+    @DisplayName("Deve enviar mensagem resolvendo conversa através do groupId")
+    void shouldSendMessageUsingGroupId() {
+        Group group = Group.builder().id(UUID.randomUUID()).name("Família").build();
+        sampleConversation.setGroup(group);
+
+        MessageSendDto dto = MessageSendDto.builder()
+                .groupId(group.getId())
+                .messageType(MessageType.TEXT)
+                .content("Mensagem para o grupo")
+                .build();
+
+        when(conversationRepository.findByGroupId(group.getId())).thenReturn(List.of(sampleConversation));
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.of(sampleParticipant));
+
+        Message savedMessage = Message.builder()
+                .id(2)
+                .conversationParticipants(sampleParticipant)
+                .content("Mensagem para o grupo")
+                .build();
+
+        when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+
+        MessageResponseDto responseDto = MessageResponseDto.builder()
+                .id(2)
+                .conversationId(sampleConversation.getId())
+                .content("Mensagem para o grupo")
+                .build();
+        when(messageMapper.toDto(savedMessage)).thenReturn(responseDto);
+
+        MessageResponseDto result = messageService.sendMessage(currentUser, dto);
+
+        assertThat(result).isNotNull();
+        verify(messagingTemplate).convertAndSend(eq("/topic/conversations." + sampleConversation.getId()), eq(responseDto));
+        verify(messagingTemplate).convertAndSend(eq("/topic/groups." + group.getId()), eq(responseDto));
+    }
+
+    @Test
+    void rejectsRelatedItemFromAnotherGroupBeforeSavingMessage() {
+        Group group = Group.builder().id(UUID.randomUUID()).build();
+        sampleConversation.setGroup(group);
+        ShoppingListProduct item = ShoppingListProduct.builder()
+                .id(42)
+                .list(ShoppingList.builder().stock(Stock.builder()
+                        .group(Group.builder().id(UUID.randomUUID()).build()).build()).build())
+                .build();
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(
+                sampleConversation.getId(), currentUser.getId())).thenReturn(Optional.of(sampleParticipant));
+        when(shoppingListProductRepository.findById(42)).thenReturn(Optional.of(item));
+
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser, MessageSendDto.builder()
+                .conversationId(sampleConversation.getId()).relatedShoppingListProductId(42).content("x").build()))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(messageRepository, messagingTemplate);
+    }
+
+    @Test
+    @DisplayName("Deve lançar ForbiddenException ao tentar enviar mensagem para conversa onde não é participante")
+    void shouldThrowForbiddenWhenNotParticipant() {
+        MessageSendDto dto = MessageSendDto.builder()
+                .conversationId(sampleConversation.getId())
+                .content("Olá")
+                .build();
+
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+        when(conversationParticipantRepository.findByIdConversationIdAndIdUserId(sampleConversation.getId(), currentUser.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> messageService.sendMessage(currentUser, dto))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("Acesso negado");
+    }
+
+    @Test
+    @DisplayName("Deve retornar histórico paginado de mensagens")
+    void shouldGetMessagesHistory() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(conversationParticipantRepository.isUserActiveParticipant(sampleConversation.getId(), currentUser.getId())).thenReturn(true);
+        when(conversationRepository.findById(sampleConversation.getId())).thenReturn(Optional.of(sampleConversation));
+
+        Message msg = Message.builder().id(1).content("Mensagem").build();
+        Page<Message> page = new PageImpl<>(List.of(msg));
+        when(messageRepository.findByConversationIdOrderByCreatedAtDesc(sampleConversation.getId(), pageable)).thenReturn(page);
+        when(messageMapper.toDto(msg)).thenReturn(MessageResponseDto.builder().id(1).content("Mensagem").build());
+
+        Page<MessageResponseDto> result = messageService.getMessagesHistory(sampleConversation.getId(), pageable);
+
+        assertThat(result).hasSize(1);
+    }
+}

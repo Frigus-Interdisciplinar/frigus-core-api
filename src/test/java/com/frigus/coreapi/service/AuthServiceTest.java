@@ -1,0 +1,233 @@
+package com.frigus.coreapi.service;
+
+import com.frigus.coreapi.dto.user.LoginRequestDto;
+import com.frigus.coreapi.dto.user.UserRegisterRequestDto;
+import com.frigus.coreapi.dto.user.UserResponseDto;
+import com.frigus.coreapi.enums.AccountType;
+import com.frigus.coreapi.enums.Role;
+import com.frigus.coreapi.exception.BadRequestException;
+import com.frigus.coreapi.exception.UnauthorizedException;
+import com.frigus.coreapi.mapper.UserMapper;
+import com.frigus.coreapi.model.User;
+import com.frigus.coreapi.repository.UserRepository;
+import com.frigus.coreapi.security.TokenProvider;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.time.LocalDate;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class AuthServiceTest {
+    @Mock private UserRepository userRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private TokenProvider tokenProvider;
+    @Mock private UserMapper userMapper;
+    @Mock private RefreshTokenService refreshTokenService;
+    @Mock private GoogleTokenVerifierService googleTokenVerifierService;
+    @Mock private GroupService groupService;
+    @InjectMocks private AuthService service;
+
+    private User user;
+
+    @BeforeEach
+    void setUp() {
+        user = User.builder().id(UUID.randomUUID()).name("Ana").email("ana@frigus.com")
+                .birthDate(LocalDate.of(1990, 1, 1)).hashPassword("hash").role(Role.USER)
+                .accountType(AccountType.DOMESTIC).build();
+    }
+
+    @Test
+    void registersAnEligibleNewUserWithDefaultAccountData() {
+        UserRegisterRequestDto request = UserRegisterRequestDto.builder().name("Ana").email(user.getEmail())
+                .birthDate(user.getBirthDate()).rawPassword("Senha@123").build();
+        when(passwordEncoder.encode("Senha@123")).thenReturn("hash");
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserResponseDto result = service.register(request);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().getRole()).isEqualTo(Role.USER);
+        assertThat(saved.getValue().getAccountType()).isEqualTo(AccountType.DOMESTIC);
+        assertThat(saved.getValue().isPlanSelectionRequired()).isTrue();
+        assertThat(result.getId()).isEqualTo(user.getId());
+        verify(groupService).provisionInitialWorkspace(user);
+    }
+
+    @Test
+    void rejectsDuplicateAndUnderageRegistrations() {
+        UserRegisterRequestDto duplicate = UserRegisterRequestDto.builder().email(user.getEmail())
+                .birthDate(LocalDate.now().minusYears(20)).build();
+        when(userRepository.existsByEmail(user.getEmail())).thenReturn(true);
+        assertThatThrownBy(() -> service.register(duplicate)).isInstanceOf(BadRequestException.class)
+                .hasMessage("Email já cadastrado");
+
+        UserRegisterRequestDto underage = UserRegisterRequestDto.builder().email("new@frigus.com")
+                .birthDate(LocalDate.now().minusYears(15)).build();
+        assertThatThrownBy(() -> service.register(underage)).isInstanceOf(BadRequestException.class)
+                .hasMessage("Idade mínima não atingida");
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void logsInOnlyWithValidCredentials() {
+        UserResponseDto dto = UserResponseDto.builder().id(user.getId()).build();
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Senha@123", "hash")).thenReturn(true);
+        when(tokenProvider.generateAccessToken(user)).thenReturn("access");
+        when(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion())).thenReturn("refresh");
+        when(userMapper.toDto(user)).thenReturn(dto);
+
+        var result = service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("Senha@123").build());
+
+        assertThat(result.getAccessToken()).isEqualTo("access");
+        assertThat(result.getRefreshToken()).isEqualTo("refresh");
+
+        when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
+        assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("wrong").build()))
+                .isInstanceOf(UnauthorizedException.class).hasMessage("Credenciais inválidas");
+        when(userRepository.findByEmail("missing@frigus.com")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email("missing@frigus.com").rawPassword("x").build()))
+                .isInstanceOf(UnauthorizedException.class);
+
+        user.setDeletedAt(java.time.Instant.now());
+        assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("Senha@123").build()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(refreshTokenService, times(1)).createRefreshToken(user.getId(), user.getTokenVersion());
+    }
+
+    @Test
+    void rotatesRefreshTokenAndRejectsInvalidOrUnknownUsers() {
+        UserResponseDto dto = UserResponseDto.builder().id(user.getId()).build();
+        when(refreshTokenService.validateAndGetUserId("old")).thenReturn(user.getId());
+        when(refreshTokenService.isCurrentVersion("old",0)).thenReturn(true);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(tokenProvider.generateAccessToken(user)).thenReturn("new-access");
+        when(refreshTokenService.createRefreshToken(user.getId(),user.getTokenVersion())).thenReturn("new-refresh");
+        when(userMapper.toDto(user)).thenReturn(dto);
+
+        var result = service.refreshToken("old");
+        assertThat(result.getRefreshToken()).isEqualTo("new-refresh");
+        verify(refreshTokenService).deleteRefreshToken("old");
+
+        when(refreshTokenService.validateAndGetUserId("invalid")).thenReturn(null);
+        assertThatThrownBy(() -> service.refreshToken("invalid")).isInstanceOf(UnauthorizedException.class);
+        when(refreshTokenService.validateAndGetUserId("missing-user")).thenReturn(UUID.randomUUID());
+        assertThatThrownBy(() -> service.refreshToken("missing-user")).isInstanceOf(UnauthorizedException.class);
+    }
+
+    @Test
+    void refreshRejectsSoftDeletedUsers() {
+        user.setDeletedAt(java.time.Instant.now());
+        when(refreshTokenService.validateAndGetUserId("deleted-user-refresh")).thenReturn(user.getId());
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.refreshToken("deleted-user-refresh"))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(refreshTokenService, never()).deleteRefreshToken(anyString());
+    }
+
+    @Test
+    void logsOutOnlyWhenThereIsAToken() {
+        service.logout("refresh");
+        service.logout(null);
+        verify(refreshTokenService).deleteRefreshToken("refresh");
+    }
+
+    @Test
+    void loginRejectsWhenUserHasNullPassword() {
+        user.setHashPassword(null);
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+
+        LoginRequestDto request = LoginRequestDto.builder().email(user.getEmail()).rawPassword("AnyPass123").build();
+        assertThatThrownBy(() -> service.login(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Conta vinculada ao Google");
+    }
+
+    @Test
+    void loginWithGoogleCreatesNewUserWhenNotFound() {
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email("novo@frigus.com")
+                .name("Novo Usuário")
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("novo@frigus.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        when(tokenProvider.generateAccessToken(any(User.class))).thenReturn("access-token");
+        when(refreshTokenService.createRefreshToken(any(UUID.class), anyInt())).thenReturn("refresh-token");
+        when(userMapper.toDto(any(User.class))).thenReturn(UserResponseDto.builder().email("novo@frigus.com").build());
+
+        var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        assertThat(captor.getValue().getGoogleId()).isEqualTo("google-123");
+        assertThat(captor.getValue().getHashPassword()).isNull();
+        verify(groupService).provisionInitialWorkspace(captor.getValue());
+    }
+
+    @Test
+    void loginWithGoogleLinksGoogleIdWhenUserExistsByEmail() {
+        user.setGoogleId(null);
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email(user.getEmail())
+                .name(user.getName())
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+        when(tokenProvider.generateAccessToken(user)).thenReturn("access-token");
+        when(refreshTokenService.createRefreshToken(user.getId(), user.getTokenVersion())).thenReturn("refresh-token");
+        when(userMapper.toDto(user)).thenReturn(UserResponseDto.builder().email(user.getEmail()).build());
+
+        var result = service.loginWithGoogle(com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build());
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        assertThat(user.getGoogleId()).isEqualTo("google-123");
+        verify(userRepository).save(user);
+        verify(groupService, never()).provisionInitialWorkspace(any(User.class));
+    }
+
+    @Test
+    void loginWithGoogleRejectsSoftDeletedAccounts() {
+        user.setDeletedAt(java.time.Instant.now());
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email(user.getEmail())
+                .name(user.getName())
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.loginWithGoogle(
+                com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).createRefreshToken(any(UUID.class), anyInt());
+    }
+}

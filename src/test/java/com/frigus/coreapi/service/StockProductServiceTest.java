@@ -1,0 +1,101 @@
+package com.frigus.coreapi.service;
+
+import com.frigus.coreapi.dto.stockproduct.StockProductCreateRequestDto;
+import com.frigus.coreapi.dto.stockproduct.StockProductResponseDto;
+import com.frigus.coreapi.enums.Category;
+import com.frigus.coreapi.enums.ProductStatus;
+import com.frigus.coreapi.mapper.StockProductMapper;
+import com.frigus.coreapi.model.Group;
+import com.frigus.coreapi.model.Product;
+import com.frigus.coreapi.model.Stock;
+import com.frigus.coreapi.model.StockProduct;
+import com.frigus.coreapi.repository.ProductRepository;
+import com.frigus.coreapi.repository.StockProductRepository;
+import com.frigus.coreapi.repository.StockRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+
+@ExtendWith(MockitoExtension.class)
+class StockProductServiceTest {
+    @Mock private StockProductRepository stockProductRepository;
+    @Mock private StockRepository stockRepository;
+    @Mock private ProductRepository productRepository;
+    @Mock private GroupAccessService groupAccessService;
+    @Mock private StockPurchaseRecorder purchaseRecorder;
+    @Mock private StockMovementService stockMovementService;
+
+    @Test
+    void shouldCreateStockProductWithCategoryAndDerivedStatus() {
+        UUID groupId = UUID.randomUUID();
+        Stock stock = Stock.builder()
+                .id(3)
+                .group(Group.builder().id(groupId).build())
+                .build();
+        Product product = Product.builder()
+                .id(7)
+                .name("Leite")
+                .category(Category.DAIRY)
+                .unitPrice(new BigDecimal("8.50"))
+                .brand("Marca")
+                .imageUrl("https://cdn.example.test/milk.png")
+                .build();
+        StockProductCreateRequestDto request = StockProductCreateRequestDto.builder()
+                .stockId(3)
+                .productId(7)
+                .quantity(4)
+                .minimalQuantity(1)
+                .purchaseUnitPrice(new BigDecimal("7.90"))
+                .expireDate(LocalDate.now().plusDays(2))
+                .build();
+        StockProductService service = new StockProductService(
+                stockProductRepository,
+                new StockProductMapper(new com.frigus.coreapi.mapper.ProductMapper()),
+                stockRepository,
+                productRepository,
+                groupAccessService,
+                new StockProductStatusResolver(),
+                purchaseRecorder,
+                stockMovementService);
+
+        when(stockRepository.findById(3)).thenReturn(Optional.of(stock));
+        when(productRepository.findById(7)).thenReturn(Optional.of(product));
+        when(stockProductRepository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(7, 3, request.getExpireDate(),null))
+                .thenReturn(false);
+        when(stockProductRepository.saveAndFlush(any(StockProduct.class)))
+                .thenAnswer(invocation -> {
+                    StockProduct saved = invocation.getArgument(0);
+                    saved.setId(11);
+                    return saved;
+                });
+
+        StockProductResponseDto response = service.create(request);
+
+        assertThat(response.getId()).isEqualTo(11);
+        assertThat(response.getCategory()).isEqualTo(Category.DAIRY);
+        assertThat(response.getProductStatus()).isEqualTo(ProductStatus.NEAR_EXPIRATION);
+        assertThat(response.getQuantity()).isEqualTo(4);
+        assertThat(response.getInitialQuantity()).isEqualTo(4);
+        assertThat(response.getPurchaseUnitPrice()).isEqualByComparingTo("7.90");
+        assertThat(response.getProduct().getName()).isEqualTo("Leite");
+        assertThat(response.getProduct().getUnitPrice()).isEqualByComparingTo("8.50");
+        assertThat(response.getProduct().getBrand()).isEqualTo("Marca");
+        var writes = inOrder(purchaseRecorder, stockProductRepository);
+        writes.verify(purchaseRecorder).lockGroup(groupId);
+        writes.verify(stockProductRepository).saveAndFlush(any(StockProduct.class));
+        writes.verify(purchaseRecorder).recordCreatedLot(any(StockProduct.class));
+        verify(groupAccessService).requireGroupWriteAccess(groupId);
+    }
+}

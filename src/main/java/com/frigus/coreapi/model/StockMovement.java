@@ -1,0 +1,61 @@
+package com.frigus.coreapi.model;
+
+import com.frigus.coreapi.enums.MovementType;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
+
+import java.time.Instant;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "stock_movements")
+public class StockMovement {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JoinColumn(name = "stock_product_id", nullable = false)
+    private StockProduct stockProduct;
+
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(name = "movement_type", columnDefinition = "movement_type_enum not null")
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    private MovementType movementType;
+
+    @Column(name = "reason_code", length = 24)
+    private String reasonCode;
+
+    @NotNull
+    @Column(name = "quantity", nullable = false)
+    private Integer quantity;
+
+    private Integer balanceAfter;
+    @Column(length=2000) private String observation;
+    @Builder.Default
+    @Column(nullable=false,length=20) private String purpose="INVENTORY";
+
+    @ColumnDefault("CURRENT_TIMESTAMP")
+    @Column(name = "date")
+    private Instant date;
+
+
+}

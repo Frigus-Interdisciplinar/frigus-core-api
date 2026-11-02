@@ -1,0 +1,148 @@
+﻿Evidencias Maven - API Frigus
+Baseline e validacao final no JDK 17; banco de integracao descartavel PostgreSQL 16.
+
+Arquivo original: baseline-tests.log
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.468 s -- in com.frigus.coreapi.config.SwaggerBrowserLauncherTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.49 s -- in com.frigus.coreapi.controller.AiRecipeChatControllerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.698 s -- in com.frigus.coreapi.controller.AuthControllerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.675 s -- in com.frigus.coreapi.controller.ConversationControllerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.963 s -- in com.frigus.coreapi.controller.GroupControllerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.589 s -- in com.frigus.coreapi.controller.IngredientControllerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.312 s -- in com.frigus.coreapi.controller.PlanControllerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 12.80 s -- in com.frigus.coreapi.controller.ProductControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.280 s -- in com.frigus.coreapi.controller.ProfileControllerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.334 s -- in com.frigus.coreapi.controller.SubscriptionControllerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.251 s -- in com.frigus.coreapi.controller.TransactionControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.161 s -- in com.frigus.coreapi.controller.UserControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 71.93 s -- in com.frigus.coreapi.CoreApiApplicationTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.065 s -- in com.frigus.coreapi.exception.GlobalExceptionHandlerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.190 s -- in com.frigus.coreapi.mapper.DiscardMapperTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in com.frigus.coreapi.mapper.IngredientMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.174 s -- in com.frigus.coreapi.mapper.PlanMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.frigus.coreapi.mapper.ProductMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.511 s -- in com.frigus.coreapi.mapper.SubscriptionMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.frigus.coreapi.mapper.TransactionMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.058 s -- in com.frigus.coreapi.mapper.UserMapperTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.frigus.coreapi.model.LifecycleCallbacksTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in com.frigus.coreapi.model.UserTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.799 s -- in com.frigus.coreapi.security.SecurityFilterTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.800 s -- in com.frigus.coreapi.security.TokenProviderTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.868 s -- in com.frigus.coreapi.service.AiRecipeChatServiceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.490 s -- in com.frigus.coreapi.service.AuthServiceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.928 s -- in com.frigus.coreapi.service.ConversationServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.281 s -- in com.frigus.coreapi.service.DiscardServiceTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.499 s -- in com.frigus.coreapi.service.GroupServiceTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.136 s -- in com.frigus.coreapi.service.IngredientServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.653 s -- in com.frigus.coreapi.service.MessageServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in com.frigus.coreapi.service.PlanLimitsResolverServiceTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.342 s -- in com.frigus.coreapi.service.PlanServiceTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.176 s -- in com.frigus.coreapi.service.ProductServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.218 s -- in com.frigus.coreapi.service.RefreshTokenServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.391 s -- in com.frigus.coreapi.service.StockMovementServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.040 s -- in com.frigus.coreapi.service.StockProductServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.frigus.coreapi.service.StockProductStatusResolverTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.599 s -- in com.frigus.coreapi.service.SubscriptionBillingJobServiceTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.338 s -- in com.frigus.coreapi.service.SubscriptionServiceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.077 s -- in com.frigus.coreapi.service.TransactionProcessorServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.363 s -- in com.frigus.coreapi.service.TransactionQueueProducerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.350 s -- in com.frigus.coreapi.service.TransactionServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.216 s -- in com.frigus.coreapi.service.TransactionWorkerServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.107 s -- in com.frigus.coreapi.service.UserProfileServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.086 s -- in com.frigus.coreapi.service.UserServiceTest
+[INFO] Tests run: 212, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  04:06 min
+
+Arquivo original: integration-first.log
+[ERROR] Tests run: 51, Failures: 0, Errors: 51, Skipped: 0, Time elapsed: 468.4 s <<< FAILURE! -- in com.frigus.coreapi.integration.ApiIntegrationTest
+[ERROR] Tests run: 51, Failures: 0, Errors: 51, Skipped: 0
+[INFO] BUILD FAILURE
+[INFO] Total time:  10:13 min
+
+Arquivo original: focused-first.log
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 14.40 s -- in com.frigus.coreapi.client.FrigusAiClientTest
+[ERROR] Tests run: 61, Failures: 29, Errors: 0, Skipped: 0, Time elapsed: 111.6 s <<< FAILURE! -- in com.frigus.coreapi.integration.ApiIntegrationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.113 s -- in com.frigus.coreapi.security.TokenProviderTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.928 s -- in com.frigus.coreapi.security.WebSocketAuthInterceptorTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.481 s -- in com.frigus.coreapi.service.GroupAccessServiceTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.002 s -- in com.frigus.coreapi.service.GroupServiceTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.840 s -- in com.frigus.coreapi.service.MessageServiceTest
+[ERROR] Tests run: 113, Failures: 29, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+[INFO] Total time:  12:42 min
+
+Arquivo original: focused-after-fixes.log
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.213 s -- in com.frigus.coreapi.client.FrigusAiClientTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.064 s -- in com.frigus.coreapi.exception.GlobalExceptionHandlerTest
+[INFO] Tests run: 61, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 85.76 s -- in com.frigus.coreapi.integration.ApiIntegrationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.frigus.coreapi.security.TokenProviderTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.421 s -- in com.frigus.coreapi.security.WebSocketAuthInterceptorTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.029 s -- in com.frigus.coreapi.service.ConversationServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.038 s -- in com.frigus.coreapi.service.GroupAccessServiceTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.795 s -- in com.frigus.coreapi.service.GroupServiceTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.785 s -- in com.frigus.coreapi.service.MessageServiceTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.190 s -- in com.frigus.coreapi.service.ProductServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.497 s -- in com.frigus.coreapi.service.StockMovementServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.298 s -- in com.frigus.coreapi.service.StockProductServiceTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.831 s -- in com.frigus.coreapi.service.TransactionServiceTest
+[INFO] Tests run: 147, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  02:20 min
+
+Arquivo original: final-suite.log
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.897 s -- in com.frigus.coreapi.client.FrigusAiClientTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.158 s -- in com.frigus.coreapi.config.SwaggerBrowserLauncherTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.670 s -- in com.frigus.coreapi.controller.AiRecipeChatControllerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.242 s -- in com.frigus.coreapi.controller.AuthControllerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.641 s -- in com.frigus.coreapi.controller.ConversationControllerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.290 s -- in com.frigus.coreapi.controller.GroupControllerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.345 s -- in com.frigus.coreapi.controller.IngredientControllerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.303 s -- in com.frigus.coreapi.controller.PlanControllerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.734 s -- in com.frigus.coreapi.controller.ProductControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.118 s -- in com.frigus.coreapi.controller.ProfileControllerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.339 s -- in com.frigus.coreapi.controller.SubscriptionControllerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.157 s -- in com.frigus.coreapi.controller.TransactionControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.092 s -- in com.frigus.coreapi.controller.UserControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 39.33 s -- in com.frigus.coreapi.CoreApiApplicationTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.069 s -- in com.frigus.coreapi.exception.GlobalExceptionHandlerTest
+[INFO] Tests run: 62, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 47.26 s -- in com.frigus.coreapi.integration.ApiIntegrationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in com.frigus.coreapi.mapper.DiscardMapperTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in com.frigus.coreapi.mapper.IngredientMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.160 s -- in com.frigus.coreapi.mapper.PlanMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.frigus.coreapi.mapper.ProductMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.168 s -- in com.frigus.coreapi.mapper.SubscriptionMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.frigus.coreapi.mapper.TransactionMapperTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.frigus.coreapi.mapper.UserMapperTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.frigus.coreapi.model.LifecycleCallbacksTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.frigus.coreapi.model.UserTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.307 s -- in com.frigus.coreapi.security.SecurityFilterTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in com.frigus.coreapi.security.TokenProviderTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.141 s -- in com.frigus.coreapi.security.WebSocketAuthInterceptorTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.905 s -- in com.frigus.coreapi.service.AiRecipeChatServiceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.508 s -- in com.frigus.coreapi.service.AuthServiceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.511 s -- in com.frigus.coreapi.service.ConversationServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.572 s -- in com.frigus.coreapi.service.DiscardServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.frigus.coreapi.service.GroupAccessServiceTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.534 s -- in com.frigus.coreapi.service.GroupServiceTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.087 s -- in com.frigus.coreapi.service.IngredientServiceTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.201 s -- in com.frigus.coreapi.service.MessageServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in com.frigus.coreapi.service.PlanLimitsResolverServiceTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.327 s -- in com.frigus.coreapi.service.PlanServiceTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in com.frigus.coreapi.service.ProductServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.817 s -- in com.frigus.coreapi.service.RefreshTokenServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.679 s -- in com.frigus.coreapi.service.StockMovementServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.045 s -- in com.frigus.coreapi.service.StockProductServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in com.frigus.coreapi.service.StockProductStatusResolverTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.776 s -- in com.frigus.coreapi.service.SubscriptionBillingJobServiceTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.257 s -- in com.frigus.coreapi.service.SubscriptionServiceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.079 s -- in com.frigus.coreapi.service.TransactionProcessorServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.248 s -- in com.frigus.coreapi.service.TransactionQueueProducerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.202 s -- in com.frigus.coreapi.service.TransactionServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.234 s -- in com.frigus.coreapi.service.TransactionWorkerServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.066 s -- in com.frigus.coreapi.service.UserProfileServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in com.frigus.coreapi.service.UserServiceTest
+[INFO] Tests run: 308, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  02:51 min
+MAVEN_EXIT_CODE=0
+
