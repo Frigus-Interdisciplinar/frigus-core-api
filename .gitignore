@@ -40,3 +40,9 @@ build/
 /deploy/aws/*.env
 node_modules
 .tools/
+
+# Local Codex worktrees, validation caches, and generated task artifacts
+/.codex-mobile-worktrees/
+/.gradle-validation-cache/
+/outputs/
+/tmp/
