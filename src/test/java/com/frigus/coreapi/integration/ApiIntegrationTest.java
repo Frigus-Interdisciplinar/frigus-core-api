@@ -158,6 +158,22 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void recordsOnlyOneDailyAccessForAuthenticatedRequests() throws Exception {
+        String token = tokens.generateAccessToken(owner);
+
+        mvc.perform(get("/profile").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mvc.perform(get("/profile").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        Integer accessCount = jdbc.queryForObject(
+                "SELECT count(*) FROM dw.user_daily_access WHERE user_id = ? AND access_date = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date",
+                Integer.class,
+                owner.getId());
+        assertThat(accessCount).isEqualTo(1);
+    }
+
+    @Test
     void rejectsInvalidBearerEvenWhenRequestIncludesCookieCredentials() throws Exception {
         mvc.perform(get("/profile").header("Authorization", "Bearer invalid")
                         .header("Cookie", "accessToken=" + tokens.generateAccessToken(owner)))
