@@ -70,7 +70,18 @@ class UserServiceTest {
         when(repository.findById(missingId)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.updateUserRole(missingId, UserRoleUpdateDto.builder().role(Role.ADMIN).build()))
                 .isInstanceOf(NotFoundException.class);
-        doThrow(new IllegalArgumentException()).when(repository).deleteById(missingId);
         assertThatThrownBy(() -> service.deleteUser(missingId)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void softDeletesUsersForTheAdministrativeDeleteEndpoint() {
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        service.delete(user.getId());
+
+        assertThat(user.getDeletedAt()).isNotNull();
+        assertThat(user.getTokenVersion()).isEqualTo(1);
+        verify(repository).save(user);
+        verify(repository, never()).delete(user);
     }
 }

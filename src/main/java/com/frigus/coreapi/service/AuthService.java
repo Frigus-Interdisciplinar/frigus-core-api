@@ -75,6 +75,10 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto body, String userAgent) {
         User user = userRepository.findByEmail(body.getEmail()).orElseThrow(() -> new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos"));
 
+        if (user.getDeletedAt() != null) {
+            throw new UnauthorizedException("Credenciais inválidas", "Email ou senha incorretos");
+        }
+
         if (user.getHashPassword() == null) {
             throw new BadRequestException("Conta vinculada ao Google", "Esta conta foi cadastrada utilizando o Google. Acesse usando 'Entrar com Google' ou redefina sua senha.");
         }
@@ -97,6 +101,9 @@ public class AuthService {
                 .orElseGet(() -> userRepository.findByEmail(googleData.getEmail()).orElse(null));
 
         if (user != null) {
+            if (user.getDeletedAt() != null) {
+                throw new UnauthorizedException("Conta indisponível", "Não foi possível autenticar esta conta");
+            }
             if (user.getGoogleId() == null) {
                 user.setGoogleId(googleData.getGoogleId());
             }
@@ -145,7 +152,7 @@ public class AuthService {
         }
 
         User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("Usuário não encontrado", "Usuário inválido"));
-        if (!refreshTokenService.isCurrentVersion(refreshToken, user.getTokenVersion())) {
+        if (user.getDeletedAt() != null || !refreshTokenService.isCurrentVersion(refreshToken, user.getTokenVersion())) {
             throw new UnauthorizedException("Refresh token inválido ou expirado", "Faça login novamente");
         }
 

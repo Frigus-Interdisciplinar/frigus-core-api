@@ -13,6 +13,9 @@ import com.frigus.coreapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -93,9 +96,12 @@ public class UserProfileService {
         repository.save(user);
     }
 
+    @Transactional
     public void deleteCurrentUser(User currentUser) {
         User user = repository.findById(currentUser.getId())
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado", "Erro ao excluir conta"));
-        repository.delete(user);
+        user.setDeletedAt(Instant.now());
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        repository.save(user);
     }
 }
