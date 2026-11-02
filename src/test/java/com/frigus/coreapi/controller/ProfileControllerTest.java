@@ -24,9 +24,6 @@ class ProfileControllerTest {
     void delegatesAllProfileEndpoints() {
         User user = User.builder().id(UUID.randomUUID()).build();
         UserResponseDto response = UserResponseDto.builder().id(user.getId()).build();
-        UserAccountTypeUpdateDto accountType = UserAccountTypeUpdateDto.builder()
-                .accountType(com.frigus.coreapi.enums.AccountType.COMMERCIAL)
-                .build();
         UserPutRequestDto put = UserPutRequestDto.builder().build();
         UserPatchRequestDto patch = UserPatchRequestDto.builder().build();
         UserChangePasswordRequestDto password = UserChangePasswordRequestDto.builder().build();

@@ -1217,15 +1217,7 @@ BEGIN
  RETURN NEW;
 END $$;
 
--- Keep this bootstrap fixture aligned with the latest user schema migrations.
--- V017__user_email_verification.sql
-ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE;
-
--- V018__user_plan_selection.sql
-ALTER TABLE users
-  ADD COLUMN plan_selection_required BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN pending_plan_transaction_id UUID;
-
+-- V017 and V018 are already represented in the users table above in this bootstrap snapshot.
 -- V019__user_daily_access.sql
 CREATE SCHEMA IF NOT EXISTS dw;
 CREATE TABLE dw.user_daily_access (
