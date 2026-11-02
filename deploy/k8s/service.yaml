@@ -3,11 +3,8 @@ kind: Service
 metadata:
   name: core-api
   namespace: frigus
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: core-api
   ports:

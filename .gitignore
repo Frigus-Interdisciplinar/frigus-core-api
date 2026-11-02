@@ -35,5 +35,6 @@ build/
 .vscode/
 
 .env
+/deploy/k8s/secrets.yaml
 node_modules
 .tools/

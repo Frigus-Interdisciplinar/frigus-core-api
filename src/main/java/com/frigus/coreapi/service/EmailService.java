@@ -32,4 +32,12 @@ public class EmailService {
                 + "Se você não solicitou a redefinição da senha, ignore este e-mail.";
         brevo.send(to, subject, body);
     }
+
+    public void sendEmailVerificationCode(String to, String code) {
+        String subject = "Confirme seu e-mail Frigus";
+        String body = "Seu código de confirmação é: "
+                + code
+                + "\nEle é válido por 10 minutos. Se você não solicitou esta confirmação, ignore este e-mail.";
+        brevo.send(to, subject, body);
+    }
 }

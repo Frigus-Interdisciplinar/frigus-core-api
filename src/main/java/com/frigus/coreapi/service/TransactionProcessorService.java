@@ -18,6 +18,7 @@ import com.frigus.coreapi.model.TransactionEvent;
 import com.frigus.coreapi.repository.SubscriptionRepository;
 import com.frigus.coreapi.repository.TransactionEventRepository;
 import com.frigus.coreapi.repository.TransactionRepository;
+import com.frigus.coreapi.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class TransactionProcessorService {
     private final TransactionRepository transactionRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final TransactionEventRepository transactionEventRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public void processTransaction(TransactionQueuePayload payload) {
@@ -58,6 +60,7 @@ public class TransactionProcessorService {
             transaction.setProcessedAt(Instant.now());
             transaction.setErrorMessage("Pagamento Recusado - Cartão inválido ou saldo insuficiente");
             transactionRepository.save(transaction);
+            userRepository.clearPendingPlanTransaction(transaction.getUser().getId(), transaction.getId());
 
             if (transaction.getSubscription() != null) {
                 Subscription sub = transaction.getSubscription();
@@ -77,6 +80,7 @@ public class TransactionProcessorService {
         transaction.setProcessedAt(Instant.now());
         transaction.setErrorMessage(null);
         transactionRepository.save(transaction);
+        userRepository.completePlanSelection(transaction.getUser().getId());
 
         recordEvent(transaction, TransactionStatus.APPROVED, "Pagamento aprovado e assinatura ativada com sucesso");
         log.info("Transação id={} aprovada com sucesso para o usuário id={}", transaction.getId(), transaction.getUser().getId());
@@ -101,6 +105,7 @@ public class TransactionProcessorService {
             transaction.setProcessedAt(Instant.now());
             transaction.setErrorMessage("Falha definitiva após " + attempts + " tentativas: " + errorMessage);
             transactionRepository.save(transaction);
+            userRepository.clearPendingPlanTransaction(transaction.getUser().getId(), transaction.getId());
 
             recordEvent(transaction, TransactionStatus.ERROR, transaction.getErrorMessage());
             log.error("Transação id={} atingiu limite de tentativas ({}) e foi marcada como ERROR", transaction.getId(), maxAttempts);
