@@ -10,7 +10,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-
+import org.springframework.web.client.RestClientResponseException;
 import java.util.UUID;
 import java.time.Duration;
 import java.util.List;
@@ -21,21 +21,23 @@ public class FrigusAiClient {
     private static final int INVOICE_PRODUCT_BATCH_SIZE = 10;
 
     private final RestClient restClient;
-    private final String baseUrl;
+    private final boolean configured;
+    private final String apiKey;
 
     public FrigusAiClient(
             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
             @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
             @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
-        if (apiKeyRequired && (apiKey == null || apiKey.isBlank())) {
+        this.configured = apiKey != null && apiKey.length() >= 32;
+        this.apiKey = apiKey;
+        if (apiKeyRequired && !configured) {
             throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
         }
-        this.baseUrl = baseUrl;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(110));
+        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(factory);
         // Uvicorn serves HTTP/1.1; avoid a JDK h2c upgrade on the internal request.
-        var requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-        requestFactory.setReadTimeout(Duration.ofSeconds(110));
-        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory);
         if (apiKey != null && !apiKey.isBlank()) {
             builder.defaultHeader("X-API-Key", apiKey);
         }
@@ -43,6 +45,8 @@ public class FrigusAiClient {
     }
 
 
+    public record CoreChatRequest(String userId, Integer stockId, String message, String sessionId,
+                                  List<String> foodPreferences) {}
     public record ChatCreateResponse(String chat_id, Integer stock_id) {}
     public record ChatMessageRequest(String content) {}
     public record ChatMessageResponse(String chat_id, String content) {}
@@ -58,6 +62,7 @@ public class FrigusAiClient {
             for (int start = 0; start < products.size(); start += INVOICE_PRODUCT_BATCH_SIZE) {
                 var batch = products.subList(start, Math.min(start + INVOICE_PRODUCT_BATCH_SIZE, products.size()));
                 var result = restClient.post().uri("/v1/invoices/extract")
+                        .header("X-API-Key", apiKey == null ? "" : apiKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(new InvoiceExtractionRequest("NFCE", "SP", "pt-BR", batch))
                         .retrieve().body(InvoiceExtraction.class);
@@ -73,47 +78,80 @@ public class FrigusAiClient {
     }
 
     public FrigusAiRecipeResponse requestRecipeFromAi(FrigusAiPromptPayload payload) {
+        long started = System.nanoTime();
+        Integer stockId = payload == null ? null : payload.getStockId();
+        boolean existingSession = payload != null && payload.getSessionId() != null && !payload.getSessionId().isBlank();
         try {
-            String sessionId = payload.getSessionId();
-            if (sessionId == null || sessionId.isBlank()) {
-                ChatCreateResponse chat = restClient.post()
-                        .uri("/v1/chats")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .retrieve()
-                        .body(ChatCreateResponse.class);
-                if (chat != null && chat.chat_id() != null) {
-                    sessionId = chat.chat_id();
-                } else {
-                    sessionId = UUID.randomUUID().toString();
-                }
+            if (!configured || payload == null || payload.getUserId() == null || payload.getUserId().isBlank()) {
+                log.warn("AI chat unavailable before HTTP: stockId={}, credentialsConfigured={}, userPresent={}",
+                        stockId, configured, payload != null && payload.getUserId() != null && !payload.getUserId().isBlank());
+                throw new ServiceUnavailableException("Integração de IA indisponível", "O assistente está temporariamente indisponível.");
             }
-
-            log.info("Enviando mensagem para frigus-ai chat {} (stockId: {})", sessionId, payload.getStockId());
-
-            ChatMessageRequest request = new ChatMessageRequest(payload.getMessage());
-            ChatMessageResponse response = restClient.post()
-                    .uri("/v1/chats/{chatId}/messages", sessionId)
+            log.debug("AI chat request: stockId={}, existingSession={}, preparedStockItems={}", stockId, existingSession,
+                    payload.getAvailableItems() == null ? null : payload.getAvailableItems().size());
+            CoreChatRequest request = new CoreChatRequest(payload.getUserId(), payload.getStockId(),
+                    payload.getMessage(), payload.getSessionId(),
+                    payload.getFoodPreferences() == null ? List.of() : payload.getFoodPreferences());
+            FrigusAiRecipeResponse response = restClient.post()
+                    .uri("/internal/core/chat")
+                    .header("X-Core-Service-Key", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .body(ChatMessageResponse.class);
+                    .body(FrigusAiRecipeResponse.class);
 
-            if (response != null && response.content() != null) {
-                return FrigusAiRecipeResponse.builder()
-                        .sessionId(response.chat_id() != null ? response.chat_id() : sessionId)
-                        .chatMessage(response.content())
-                        .build();
+            if (response != null && response.getSessionId() != null && !response.getSessionId().isBlank() &&
+                    response.getChatMessage() != null && !response.getChatMessage().isBlank() &&
+                    response.getRecipeIds() != null && response.getRecipeIds().size() <= 10 &&
+                    response.getRecipeIds().stream().allMatch(id -> id != null && id > 0)) {
+                log.info("AI chat completed: stockId={}, existingSession={}, recipeCount={}, elapsedMs={}",
+                        stockId, existingSession, response.getRecipeIds().size(), elapsedMillis(started));
+                return response;
             }
 
+            log.warn("Invalid AI chat response: stockId={}, sessionPresent={}, messagePresent={}, recipeIdsPresent={}, elapsedMs={}",
+                    stockId, response != null && response.getSessionId() != null && !response.getSessionId().isBlank(),
+                    response != null && response.getChatMessage() != null && !response.getChatMessage().isBlank(),
+                    response != null && response.getRecipeIds() != null, elapsedMillis(started));
             throw new ServiceUnavailableException("Resposta inválida da IA", "A inteligência artificial não retornou uma resposta válida.");
+        } catch (RestClientResponseException e) {
+            Throwable diagnostic = diagnosticCause(e, 0);
+            log.error("AI HTTP call failed: operation=/internal/core/chat, stockId={}, existingSession={}, upstreamStatus={}, elapsedMs={}",
+                    stockId, existingSession, e.getStatusCode().value(), elapsedMillis(started), diagnostic);
+            throw unavailable(diagnostic);
         } catch (RestClientException e) {
-            log.error("Serviço frigus_ai indisponível ou erro na chamada HTTP");
-            throw new ServiceUnavailableException("Serviço de IA indisponível", "O serviço de inteligência artificial está temporariamente indisponível. Tente novamente mais tarde.");
+            Throwable diagnostic = diagnosticCause(e, 0);
+            log.error("AI transport/decoding failed: operation=/internal/core/chat, stockId={}, existingSession={}, elapsedMs={}",
+                    stockId, existingSession, elapsedMillis(started), diagnostic);
+            throw unavailable(diagnostic);
         } catch (ServiceUnavailableException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Erro inesperado ao chamar frigus_ai");
-            throw new ServiceUnavailableException("Erro ao processar IA", "Ocorreu uma falha ao comunicar com o assistente de inteligência artificial.");
+            Throwable diagnostic = diagnosticCause(e, 0);
+            log.error("Unexpected AI client failure: stockId={}, existingSession={}, elapsedMs={}",
+                    stockId, existingSession, elapsedMillis(started), diagnostic);
+            ServiceUnavailableException failure = new ServiceUnavailableException("Erro ao processar IA",
+                    "Ocorreu uma falha ao comunicar com o assistente de inteligência artificial.");
+            failure.initCause(diagnostic);
+            throw failure;
         }
+    }
+
+    private static long elapsedMillis(long started) { return (System.nanoTime() - started) / 1_000_000; }
+
+    private static ServiceUnavailableException unavailable(Throwable diagnostic) {
+        ServiceUnavailableException failure = new ServiceUnavailableException("Serviço de IA indisponível",
+                "O serviço de inteligência artificial está temporariamente indisponível. Tente novamente mais tarde.");
+        failure.initCause(diagnostic);
+        return failure;
+    }
+
+    /** Preserve failure classes, frames and causal chain without logging response bodies, tokens or prompts. */
+    private static Throwable diagnosticCause(Throwable failure, int depth) {
+        RuntimeException diagnostic = new RuntimeException(failure.getClass().getName());
+        diagnostic.setStackTrace(failure.getStackTrace());
+        if (failure.getCause() != null && failure.getCause() != failure && depth < 8)
+            diagnostic.initCause(diagnosticCause(failure.getCause(), depth + 1));
+        return diagnostic;
     }
 }

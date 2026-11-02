@@ -2,6 +2,8 @@ package com.frigus.coreapi.dto.ai;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,4 +24,7 @@ public class AiRecipeChatRequestDto {
     private Integer stockId;
 
     private String sessionId;
+
+    @Size(max = 9)
+    private List<String> foodPreferences;
 }

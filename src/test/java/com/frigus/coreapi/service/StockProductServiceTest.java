@@ -24,6 +24,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class StockProductServiceTest {
@@ -31,6 +34,7 @@ class StockProductServiceTest {
     @Mock private StockRepository stockRepository;
     @Mock private ProductRepository productRepository;
     @Mock private GroupAccessService groupAccessService;
+    @Mock private StockPurchaseRecorder purchaseRecorder;
     @Mock private StockMovementService stockMovementService;
 
     @Test
@@ -63,13 +67,14 @@ class StockProductServiceTest {
                 productRepository,
                 groupAccessService,
                 new StockProductStatusResolver(),
+                purchaseRecorder,
                 stockMovementService);
 
         when(stockRepository.findById(3)).thenReturn(Optional.of(stock));
         when(productRepository.findById(7)).thenReturn(Optional.of(product));
         when(stockProductRepository.existsByProductIdAndStockIdAndExpireDateAndBatchAndDeletedAtIsNull(7, 3, request.getExpireDate(),null))
                 .thenReturn(false);
-        when(stockProductRepository.save(org.mockito.ArgumentMatchers.any(StockProduct.class)))
+        when(stockProductRepository.saveAndFlush(any(StockProduct.class)))
                 .thenAnswer(invocation -> {
                     StockProduct saved = invocation.getArgument(0);
                     saved.setId(11);
@@ -87,5 +92,10 @@ class StockProductServiceTest {
         assertThat(response.getProduct().getName()).isEqualTo("Leite");
         assertThat(response.getProduct().getUnitPrice()).isEqualByComparingTo("8.50");
         assertThat(response.getProduct().getBrand()).isEqualTo("Marca");
+        var writes = inOrder(purchaseRecorder, stockProductRepository);
+        writes.verify(purchaseRecorder).lockGroup(groupId);
+        writes.verify(stockProductRepository).saveAndFlush(any(StockProduct.class));
+        writes.verify(purchaseRecorder).recordCreatedLot(any(StockProduct.class));
+        verify(groupAccessService).requireGroupWriteAccess(groupId);
     }
 }

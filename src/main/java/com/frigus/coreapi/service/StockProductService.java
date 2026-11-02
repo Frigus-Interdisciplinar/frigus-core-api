@@ -30,6 +30,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
     private final ProductRepository productRepository;
     private final GroupAccessService groupAccessService;
     private final StockProductStatusResolver statusResolver;
+    private final StockPurchaseRecorder purchaseRecorder;
     private final StockMovementService stockMovementService;
 
     public StockProductService(
@@ -39,12 +40,14 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             ProductRepository productRepository,
             GroupAccessService groupAccessService,
             StockProductStatusResolver statusResolver,
+            StockPurchaseRecorder purchaseRecorder,
             StockMovementService stockMovementService) {
         super(repository, mapper);
         this.stockRepository = stockRepository;
         this.productRepository = productRepository;
         this.groupAccessService = groupAccessService;
         this.statusResolver = statusResolver;
+        this.purchaseRecorder = purchaseRecorder;
         this.stockMovementService = stockMovementService;
     }
 
@@ -108,6 +111,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
     public StockProductResponseDto create(StockProductCreateRequestDto dto) {
         Stock stock = getRequiredStock(dto.getStockId());
         groupAccessService.requireGroupWriteAccess(stock.getGroup().getId());
+        purchaseRecorder.lockGroup(stock.getGroup().getId());
         Product product = productRepository.findById(dto.getProductId())
                 .orElseThrow(() -> new NotFoundException("Produto nÃ£o encontrado", "O produto informado nÃ£o existe"));
 
@@ -125,7 +129,9 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
         stockProduct.setInitialQuantity(dto.getQuantity());
         stockProduct.setCategory(product.getCategory());
         stockProduct.setProductStatus(statusResolver.resolve(dto.getExpireDate()));
-        return mapToDto(repository.save(stockProduct));
+        StockProduct saved = repository.saveAndFlush(stockProduct);
+        purchaseRecorder.recordCreatedLot(saved);
+        return mapToDto(saved);
     }
 
     @Transactional

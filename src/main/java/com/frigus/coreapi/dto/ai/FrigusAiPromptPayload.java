@@ -20,6 +20,7 @@ public class FrigusAiPromptPayload {
     private String message;
     private String sessionId;
     private Integer stockId;
+    private List<String> foodPreferences;
     private List<StockItemPayload> availableItems;
 
     @Builder
