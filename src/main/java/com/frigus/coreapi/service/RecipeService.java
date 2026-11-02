@@ -24,7 +24,11 @@ public class RecipeService {
  private final GroupContextService context;
  private final GroupAccessService access;
  private final PlanLimitsResolverService limits;
- public Page<RecipeResponseDto> list(String name,Pageable pageable){return (name==null ? recipes.findByActiveTrue(pageable) : recipes.findByActiveTrueAndNameContainingIgnoreCase(name,pageable)).map(this::toDto);}
+ public Page<RecipeResponseDto> list(String name,Pageable pageable){
+  var page=name==null ? recipes.findByActiveTrue(pageable) : recipes.findByActiveTrueAndNameContainingIgnoreCase(name,pageable);
+  var content=toDtos(page.getContent());
+  return new PageImpl<>(content,page.getPageable(),page.getTotalElements());
+ }
  public RecipeResponseDto get(Integer id){return toDto(requireRecipe(id));}
  public Page<RecipeResponseDto> favorites(Pageable pageable){return favorites.findByUserIdAndRecipeActiveTrue(access.requireCurrentUser().getId(),pageable).map(f -> toDto(f.getRecipe()));}
  @Transactional public RecipeResponseDto create(RecipeRequestDto dto){
@@ -50,15 +54,22 @@ public class RecipeService {
  public List<RecipeSuggestionDto> suggestions(Integer stockId,int limit){
   var inventory=inventory(stockId);
   var allIngredients=ingredients.findActiveRecipeIngredients().stream().collect(java.util.stream.Collectors.groupingBy(i -> i.getRecipe().getId()));
-  List<RecipeSuggestionDto> result=new ArrayList<>();
+  List<ScoredRecipe> result=new ArrayList<>();
   for(var recipe:recipes.findByActiveTrue()){
    var availability=calculate(allIngredients.getOrDefault(recipe.getId(),List.of()),inventory);
    int matched=(int)availability.stream().filter(i -> i.required() && i.available()).count();
    int missing=(int)availability.stream().filter(i -> i.required() && !i.available()).count();
    BigDecimal score=matched+missing==0 ? BigDecimal.ZERO : BigDecimal.valueOf(matched).divide(BigDecimal.valueOf(matched+missing),4,RoundingMode.HALF_UP);
-   result.add(new RecipeSuggestionDto(toDto(recipe),matched,missing,score,availability));
+   result.add(new ScoredRecipe(recipe,matched,missing,score,availability));
   }
-  return result.stream().sorted(Comparator.comparing(RecipeSuggestionDto::score).reversed().thenComparing(s -> s.recipe().getId())).limit(limit).toList();
+  var selected=result.stream().sorted(Comparator.comparing(ScoredRecipe::score).reversed().thenComparing(s -> s.recipe().getId())).limit(limit).toList();
+  var recipeDtos=toDtos(selected.stream().map(ScoredRecipe::recipe).toList());
+  List<RecipeSuggestionDto> suggestions=new ArrayList<>(selected.size());
+  for(int i=0;i<selected.size();i++){
+   var scored=selected.get(i);
+   suggestions.add(new RecipeSuggestionDto(recipeDtos.get(i),scored.matched(),scored.missing(),scored.score(),scored.availability()));
+  }
+  return suggestions;
  }
  private Map<Integer,Integer> inventory(Integer stockId){
   var all=stockId==null ? stocks.findActiveByGroup(context.resolveGroup(null).getId()) : stocks.findActiveByStock(context.requireStock(stockId,false).getId());
@@ -75,5 +86,14 @@ public class RecipeService {
   }).toList();
  }
  private Recipe requireRecipe(Integer id){return recipes.findByIdAndActiveTrue(id).orElseThrow(NotFoundException::new);}
- private RecipeResponseDto toDto(Recipe recipe){return RecipeResponseDto.builder().id(recipe.getId()).name(recipe.getName()).description(recipe.getDescription()).instructions(recipe.getInstructions()).domesticOnly(recipe.getDomesticOnly()).active(recipe.getActive()).favorite(favorites.existsByUserIdAndRecipeId(access.requireCurrentUser().getId(),recipe.getId())).createdAt(recipe.getCreatedAt()).ingredients(ingredients.findByRecipeId(recipe.getId()).stream().map(ingredientMapper::toDto).toList()).build();}
+ private RecipeResponseDto toDto(Recipe recipe){return toDtos(List.of(recipe)).get(0);}
+ private List<RecipeResponseDto> toDtos(List<Recipe> recipesToMap){
+  if(recipesToMap.isEmpty()) return List.of();
+  var recipeIds=recipesToMap.stream().map(Recipe::getId).toList();
+  var ingredientsByRecipe=ingredients.findByRecipeIdsWithProduct(recipeIds).stream()
+   .collect(java.util.stream.Collectors.groupingBy(i -> i.getRecipe().getId(),java.util.stream.Collectors.mapping(ingredientMapper::toDto,java.util.stream.Collectors.toList())));
+  var favoriteRecipeIds=favorites.findRecipeIdsByUserIdAndRecipeIds(access.requireCurrentUser().getId(),recipeIds);
+  return recipesToMap.stream().map(recipe -> RecipeResponseDto.builder().id(recipe.getId()).name(recipe.getName()).description(recipe.getDescription()).instructions(recipe.getInstructions()).domesticOnly(recipe.getDomesticOnly()).active(recipe.getActive()).favorite(favoriteRecipeIds.contains(recipe.getId())).createdAt(recipe.getCreatedAt()).ingredients(ingredientsByRecipe.getOrDefault(recipe.getId(),List.of())).build()).toList();
+ }
+ private record ScoredRecipe(Recipe recipe,int matched,int missing,BigDecimal score,List<IngredientAvailabilityDto> availability) { }
 }

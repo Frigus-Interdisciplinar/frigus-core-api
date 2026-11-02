@@ -11,4 +11,7 @@ public interface RecipeFavoriteRepository extends BaseRepository<RecipeFavorite,
  boolean existsByUserIdAndRecipeId(UUID userId,Integer recipeId);
  Page<RecipeFavorite> findByUserIdAndRecipeActiveTrue(UUID userId,Pageable pageable);
 
+ @Query("select f.recipe.id from RecipeFavorite f where f.user.id = :userId and f.recipe.id in :recipeIds")
+ Set<Integer> findRecipeIdsByUserIdAndRecipeIds(@Param("userId") UUID userId, @Param("recipeIds") Collection<Integer> recipeIds);
+
 }
