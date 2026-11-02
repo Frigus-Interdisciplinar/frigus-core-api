@@ -12,6 +12,7 @@ import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.SubscriptionRepository;
 import com.frigus.coreapi.repository.TransactionEventRepository;
 import com.frigus.coreapi.repository.TransactionRepository;
+import com.frigus.coreapi.repository.UserRepository;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,7 @@ class TransactionQueueRecoveryTest {
         transactions = mock(TransactionRepository.class);
         subscriptions = mock(SubscriptionRepository.class);
         events = mock(TransactionEventRepository.class);
+        UserRepository users = mock(UserRepository.class);
 
         when(transactions.findByIdForUpdate(any())).thenAnswer(invocation -> {
             UUID id = invocation.getArgument(0);
@@ -107,7 +109,7 @@ class TransactionQueueRecoveryTest {
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(new DataSourceTransactionManager(dataSource));
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
-        ProxyFactory proxy = new ProxyFactory(new TransactionProcessorService(transactions, subscriptions, events));
+        ProxyFactory proxy = new ProxyFactory(new TransactionProcessorService(transactions, subscriptions, events, users));
         proxy.addAdvice(interceptor);
         processor = (TransactionProcessorService) proxy.getProxy();
     }

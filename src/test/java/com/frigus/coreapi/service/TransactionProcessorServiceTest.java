@@ -266,7 +266,7 @@ class TransactionProcessorServiceTest {
     @Test
     void keepsPlanSelectionRequiredWhenThePaymentIsRejected() {
         var payload = TransactionQueuePayload.builder().transactionId(pendingTransaction.getId()).fakeCardLast4("0000").build();
-        when(transactionRepository.findById(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
+        when(transactionRepository.findByIdForUpdate(pendingTransaction.getId())).thenReturn(Optional.of(pendingTransaction));
         processorService.processTransaction(payload);
         assertThat(pendingTransaction.getStatus()).isEqualTo(TransactionStatus.REJECTED);
         verify(userRepository, never()).completePlanSelection(any());

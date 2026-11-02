@@ -1222,3 +1222,13 @@ ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE users
   ADD COLUMN plan_selection_required BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN pending_plan_transaction_id UUID;
+
+-- V019__user_daily_access.sql
+CREATE SCHEMA IF NOT EXISTS dw;
+CREATE TABLE dw.user_daily_access (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  access_date DATE NOT NULL,
+  first_access_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, access_date)
+);
+CREATE INDEX idx_user_daily_access_date ON dw.user_daily_access (access_date);
