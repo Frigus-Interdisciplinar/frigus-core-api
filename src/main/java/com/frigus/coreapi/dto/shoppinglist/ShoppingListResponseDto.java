@@ -22,6 +22,8 @@ public class ShoppingListResponseDto {
     private String stockName;
     private LocalDate date;
     private ListStatus status;
+    private String supplier;
+    private Instant completedAt;
     private Long totalItems;
     private Long purchasedItems;
     private Long pendingItems;

@@ -1,6 +1,7 @@
 package com.frigus.coreapi.controller;
 
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListCreateRequestDto;
+import com.frigus.coreapi.dto.shoppinglist.ShoppingListCompleteRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductCreateRequestDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductResponseDto;
 import com.frigus.coreapi.dto.shoppinglist.ShoppingListProductUpdateRequestDto;
@@ -80,6 +81,13 @@ public class ShoppingListController {
     @Operation(summary = "Manually close a shopping list")
     public ShoppingListResponseDto closeList(@PathVariable UUID id) {
         return shoppingListService.closeList(id);
+    }
+
+    @PostMapping("/{id}/complete")
+    @Operation(summary = "Complete a shopping list and save its supplier")
+    public ShoppingListResponseDto completeList(@PathVariable UUID id,
+            @Valid @RequestBody(required = false) ShoppingListCompleteRequestDto dto) {
+        return shoppingListService.closeList(id, dto == null ? null : dto.supplier());
     }
 
     @PatchMapping("/{id}/cancel")
