@@ -143,7 +143,7 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             throw new BadRequestException("Atualizacao vazia", "Informe ao menos um campo para atualizar");
         }
 
-        if (dto.getName() != null || dto.getCategory() != null || dto.getStoragePlace() != null) {
+        if (dto.getName() != null || dto.getCategory() != null || dto.getStoragePlace() != null || dto.getUnitOfMeasure() != null || dto.getImageUrl() != null) {
             Product product = stockProduct.getProduct();
             java.util.UUID groupId = stockProduct.getStock().getGroup().getId();
             if (product.getOwnerGroup() == null || !product.getOwnerGroup().getId().equals(groupId)) {
@@ -157,6 +157,8 @@ public class StockProductService extends BaseService<StockProduct, Integer, Stoc
             if (dto.getName() != null) product.setName(dto.getName().trim());
             if (dto.getCategory() != null) product.setCategory(dto.getCategory());
             if (dto.getStoragePlace() != null) product.setStoragePlace(dto.getStoragePlace());
+            if (dto.getUnitOfMeasure() != null) product.setUnitOfMeasure(dto.getUnitOfMeasure());
+            if (dto.getImageUrl() != null) product.setImageUrl(dto.getImageUrl().trim().isEmpty() ? null : dto.getImageUrl().trim());
             stockProduct.setProduct(productRepository.save(product));
             stockProduct.setCategory(product.getCategory());
         }
