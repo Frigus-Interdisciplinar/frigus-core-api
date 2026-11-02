@@ -1220,10 +1220,13 @@ END $$;
 -- V017 and V018 are already represented in the users table above in this bootstrap snapshot.
 -- V019__user_daily_access.sql
 CREATE SCHEMA IF NOT EXISTS dw;
-CREATE TABLE dw.user_daily_access (
+CREATE TABLE IF NOT EXISTS dw.user_daily_access (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   access_date DATE NOT NULL,
   first_access_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, access_date)
 );
-CREATE INDEX idx_user_daily_access_date ON dw.user_daily_access (access_date);
+ALTER TABLE dw.user_daily_access
+  ALTER COLUMN first_access_at SET DEFAULT CURRENT_TIMESTAMP;
+CREATE INDEX IF NOT EXISTS ix_user_daily_access_date_user
+  ON dw.user_daily_access (access_date, user_id);
