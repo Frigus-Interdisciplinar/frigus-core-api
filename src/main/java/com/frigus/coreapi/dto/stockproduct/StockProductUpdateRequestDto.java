@@ -2,6 +2,7 @@ package com.frigus.coreapi.dto.stockproduct;
 
 import com.frigus.coreapi.enums.Category;
 import com.frigus.coreapi.enums.StoragePlace;
+import com.frigus.coreapi.enums.UnitOfMeasure;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -36,6 +37,10 @@ public class StockProductUpdateRequestDto {
     private Category category;
     private StoragePlace storagePlace;
 
+    private UnitOfMeasure unitOfMeasure;
+    @jakarta.validation.constraints.Size(max = 2048, message = "A URL da imagem deve ter no máximo 2048 caracteres")
+    private String imageUrl;
+
     @PositiveOrZero(message = "A quantidade não pode ser negativa")
     private Integer quantity;
 
@@ -47,6 +52,6 @@ public class StockProductUpdateRequestDto {
 
     public boolean isEmpty() {
         return minimalQuantity == null && expireDate == null && name == null && category == null
-                && storagePlace == null && quantity == null && initialQuantity == null && batch == null && purchaseUnitPrice == null;
+                && storagePlace == null && unitOfMeasure == null && imageUrl == null && quantity == null && initialQuantity == null && batch == null && purchaseUnitPrice == null;
     }
 }
