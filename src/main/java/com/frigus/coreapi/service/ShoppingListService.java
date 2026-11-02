@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 @Service
@@ -198,10 +199,22 @@ public class ShoppingListService extends BaseService<ShoppingList, UUID, Shoppin
 
     @Transactional
     public ShoppingListResponseDto closeList(UUID id) {
+        return closeList(id, null);
+    }
+
+    @Transactional
+    public ShoppingListResponseDto closeList(UUID id, String supplier) {
         ShoppingList list = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException());
         groupAccessService.requireGroupAccess(list.getStock().getGroup().getId());
 
+        if (list.getStatus() != ListStatus.COMPLETED) {
+            list.setCompletedAt(Instant.now());
+        }
+        if (supplier != null) {
+            String normalizedSupplier = supplier.trim();
+            list.setSupplier(normalizedSupplier.isEmpty() ? null : normalizedSupplier);
+        }
         list.setStatus(ListStatus.COMPLETED);
         repository.save(list);
         return findByIdWithItems(id);

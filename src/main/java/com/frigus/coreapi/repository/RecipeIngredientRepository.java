@@ -14,4 +14,7 @@ public interface RecipeIngredientRepository extends BaseRepository<RecipeIngredi
 
  @org.springframework.data.jpa.repository.Query("select i from RecipeIngredient i join fetch i.recipe join fetch i.product where i.recipe.active=true")
  java.util.List<RecipeIngredient> findActiveRecipeIngredients();
+
+ @org.springframework.data.jpa.repository.Query("select i from RecipeIngredient i join fetch i.recipe join fetch i.product where i.recipe.id in :recipeIds")
+ java.util.List<RecipeIngredient> findByRecipeIdsWithProduct(@org.springframework.data.repository.query.Param("recipeIds") java.util.Collection<Integer> recipeIds);
 }

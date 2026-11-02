@@ -35,6 +35,8 @@ public class ShoppingListMapper implements BaseMapper<ShoppingList, ShoppingList
                 .stockName(entity.getStock() != null ? entity.getStock().getName() : null)
                 .date(entity.getDate())
                 .status(entity.getStatus())
+                .supplier(entity.getSupplier())
+                .completedAt(entity.getCompletedAt())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
