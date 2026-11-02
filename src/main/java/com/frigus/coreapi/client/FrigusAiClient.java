@@ -23,25 +23,23 @@ public class FrigusAiClient {
     private final RestClient restClient;
     private final boolean configured;
     private final String apiKey;
+    private final String coreServiceKey;
 
     public FrigusAiClient(
             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
             @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
-            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
-        this.configured = apiKey != null && apiKey.length() >= 32;
+            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired,
+            @Value("${FRIGUS_AI_CORE_SERVICE_KEY:}") String coreServiceKey) {
+        this.configured = coreServiceKey != null && coreServiceKey.length() >= 32;
         this.apiKey = apiKey;
-        if (apiKeyRequired && !configured) {
+        this.coreServiceKey = coreServiceKey;
+        if (apiKeyRequired && (apiKey == null || apiKey.length() < 32)) {
             throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
         }
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
         factory.setReadTimeout(Duration.ofSeconds(110));
-        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(factory);
-        // Uvicorn serves HTTP/1.1; avoid a JDK h2c upgrade on the internal request.
-        if (apiKey != null && !apiKey.isBlank()) {
-            builder.defaultHeader("X-API-Key", apiKey);
-        }
-        this.restClient = builder.build();
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
 
@@ -83,7 +81,7 @@ public class FrigusAiClient {
         boolean existingSession = payload != null && payload.getSessionId() != null && !payload.getSessionId().isBlank();
         try {
             if (!configured || payload == null || payload.getUserId() == null || payload.getUserId().isBlank()) {
-                log.warn("AI chat unavailable before HTTP: stockId={}, credentialsConfigured={}, userPresent={}",
+                log.warn("AI chat unavailable before HTTP: stockId={}, serviceCredentialConfigured={}, userPresent={}",
                         stockId, configured, payload != null && payload.getUserId() != null && !payload.getUserId().isBlank());
                 throw new ServiceUnavailableException("Integração de IA indisponível", "O assistente está temporariamente indisponível.");
             }
@@ -94,7 +92,7 @@ public class FrigusAiClient {
                     payload.getFoodPreferences() == null ? List.of() : payload.getFoodPreferences());
             FrigusAiRecipeResponse response = restClient.post()
                     .uri("/internal/core/chat")
-                    .header("X-Core-Service-Key", apiKey)
+                    .header("X-Core-Service-Key", coreServiceKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()

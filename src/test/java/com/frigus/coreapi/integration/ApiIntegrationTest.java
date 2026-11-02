@@ -54,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
         "spring.jpa.open-in-view=false", "app.swagger.open-on-startup=false",
         "FRIGUS_AI_API_KEY=test-service-key-with-at-least-32-characters",
+        "FRIGUS_AI_CORE_SERVICE_KEY=test-core-service-key-with-at-least-32-characters",
         "aws.s3.enabled=false", "logging.level.root=WARN"
 })
 class ApiIntegrationTest {
@@ -799,7 +800,7 @@ class ApiIntegrationTest {
         var builder = original.mutate().baseUrl("http://ai.example.test");
         var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
         server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("http://ai.example.test/internal/core/chat"))
-                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.header("X-Core-Service-Key", "test-service-key-with-at-least-32-characters"))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.header("X-Core-Service-Key", "test-core-service-key-with-at-least-32-characters"))
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
         org.springframework.test.util.ReflectionTestUtils.setField(aiClient, "restClient", builder.build());
         try {

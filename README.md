@@ -95,7 +95,7 @@ As variáveis sem padrão são necessárias para iniciar a API fora do Compose. 
 | `SECURITY_ALLOWED_ORIGINS` | Origens aceitas por CORS e WebSocket; padrão `http://localhost:3000,http://localhost:5173`. |
 | `APP_FRONTEND_URL`, `APP_TIME_ZONE` | URL usada em fluxos de e-mail (`http://localhost:5173`) e fuso das tarefas (`America/Sao_Paulo`). |
 | `FLYWAY_ENABLED`, `FLYWAY_BASELINE_ON_MIGRATE`, `FLYWAY_BASELINE_VERSION` | Migrações (`true`), baseline automático (`false`) e versão de baseline (`3`). Revise o banco antes de habilitar baseline. |
-| `FRIGUS_AI_BASE_URL`, `FRIGUS_AI_API_KEY`, `FRIGUS_AI_API_KEY_REQUIRED` | Endereço da IA (`http://localhost:8000`), chave compartilhada e exigência de chave na inicialização (`false`). O chat de IA precisa de chave válida e do serviço externo disponível. |
+| `FRIGUS_AI_BASE_URL`, `FRIGUS_AI_API_KEY`, `FRIGUS_AI_API_KEY_REQUIRED`, `FRIGUS_AI_CORE_SERVICE_KEY` | Origem da IA (`http://localhost:8000`), chave pública e exigência na inicialização (`false`) para NFC-e, além da chave interna do chat. `FRIGUS_AI_CORE_SERVICE_KEY` deve corresponder a `API_KEYS__CORE_SERVICE_KEY` na IA e ter pelo menos 32 caracteres aleatórios. |
 | `BREVO_API_URL`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | API de e-mail (`https://api.brevo.com/v3`) e remetente; chave e e-mail são necessários para enviar mensagens. |
 | `GOOGLE_CLIENT_ID` | Público esperado no login com Google; necessário para essa função. |
 | `AWS_REGION`, `AWS_S3_ENABLED` | Região (`sa-east-1`) e criação opcional do cliente S3 (`false` no Compose). `AWS_S3_BUCKET` aparece no exemplo de ambiente, mas não é lida pelo código atual. |
