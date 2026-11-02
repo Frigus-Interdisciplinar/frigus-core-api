@@ -35,6 +35,8 @@ build/
 .vscode/
 
 .env
+.env.production
 /deploy/k8s/secrets.yaml
+/deploy/aws/*.env
 node_modules
 .tools/

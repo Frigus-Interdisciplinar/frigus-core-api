@@ -1,6 +1,7 @@
 package com.frigus.coreapi.exception;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,6 +24,10 @@ class GlobalExceptionHandlerTest {
         assertThat(conflict.getStatusCode().value()).isEqualTo(409);
         assertThat(unavailable.getStatusCode().value()).isEqualTo(503);
         assertThat(badRequest.getBody().message()).isEqualTo("invalid");
+        assertThat(badRequest.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(badRequest.getBody().type().toString()).isEqualTo("about:blank");
+        assertThat(badRequest.getBody().title()).isEqualTo("invalid");
+        assertThat(badRequest.getBody().detail()).isEqualTo("show invalid");
     }
 
     @Test
@@ -33,5 +38,6 @@ class GlobalExceptionHandlerTest {
         assertThat(known.getBody().displayMessage()).isEqualTo("try later");
         assertThat(unexpected.getStatusCode().value()).isEqualTo(500);
         assertThat(unexpected.getBody().code()).isEqualTo("INTERNAL_SERVER_ERROR");
+        assertThat(unexpected.getBody().detail()).doesNotContain("unexpected");
     }
 }

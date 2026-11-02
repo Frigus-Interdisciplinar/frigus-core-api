@@ -1216,3 +1216,14 @@ BEGIN
  FROM user_groups ug CROSS JOIN products p WHERE ug.group_id=v_group_id AND p.id=NEW.product_id;
  RETURN NEW;
 END $$;
+
+-- V017 and V018 are already represented in the users table above in this bootstrap snapshot.
+-- V019__user_daily_access.sql
+CREATE SCHEMA IF NOT EXISTS dw;
+CREATE TABLE dw.user_daily_access (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  access_date DATE NOT NULL,
+  first_access_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, access_date)
+);
+CREATE INDEX idx_user_daily_access_date ON dw.user_daily_access (access_date);

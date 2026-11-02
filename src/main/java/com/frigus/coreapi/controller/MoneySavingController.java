@@ -3,6 +3,7 @@ package com.frigus.coreapi.controller;
 import com.frigus.coreapi.dto.moneysaving.MoneySavingDtos;
 import com.frigus.coreapi.service.FoodPurchaseService;
 import com.frigus.coreapi.service.MoneySavingReportService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,7 +31,8 @@ public class MoneySavingController {
     @PostMapping("/food-purchases")
     @ResponseStatus(HttpStatus.CREATED)
     public MoneySavingDtos.Purchase create(@PathVariable UUID groupId,
-            @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody MoneySavingDtos.PurchaseInput input) {
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody MoneySavingDtos.PurchaseInput input) {
         return purchases.create(groupId, idempotencyKey, input);
     }
 
@@ -41,7 +43,7 @@ public class MoneySavingController {
 
     @PutMapping("/food-purchases/{purchaseId}")
     public MoneySavingDtos.Purchase update(@PathVariable UUID groupId, @PathVariable UUID purchaseId,
-            @RequestBody MoneySavingDtos.PurchaseInput input) {
+            @Valid @RequestBody MoneySavingDtos.PurchaseInput input) {
         return purchases.update(groupId, purchaseId, input);
     }
 

@@ -190,6 +190,4 @@ public class AuthService {
             refreshTokenService.deleteRefreshToken(refreshToken);
         }
     }
-
-    // TODO: implementar recuperacao de senha
 }

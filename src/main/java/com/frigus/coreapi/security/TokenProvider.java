@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import com.auth0.jwt.JWT;
 import com.frigus.coreapi.model.User;
 
+import jakarta.annotation.PostConstruct;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.UUID;
 
@@ -21,6 +23,14 @@ public class TokenProvider {
 
     @Value("${jwt.expiration-time}")
     private Long expirationTime;
+
+    @PostConstruct
+    void validateConfiguration() {
+        signingAlgorithm();
+        if (expirationTime == null || expirationTime <= 0) {
+            throw new IllegalStateException("JWT_EXPIRATION must be a positive number of milliseconds");
+        }
+    }
 
     public String generateAccessToken(User user) {
         return generateAccessToken(user, null);
@@ -37,12 +47,12 @@ public class TokenProvider {
                 .withClaim("plan", user.getPlanCodeFromUser())
                 .withClaim("tokenVersion", user.getTokenVersion());
         if (sessionId != null) builder.withClaim("sessionId", sessionId.toString());
-        return builder.sign(Algorithm.HMAC256(secret));
+        return builder.sign(signingAlgorithm());
     }
 
     public String validateAccessTokenAndGetSubject(String accessToken) {
         try {
-            return JWT.require(Algorithm.HMAC256(secret))
+            return JWT.require(signingAlgorithm())
             .withIssuer("frigus")
             .build()
             .verify(accessToken)
@@ -54,7 +64,7 @@ public class TokenProvider {
 
     public DecodedJWT validateAccessToken(String accessToken) {
         try {
-            return JWT.require(Algorithm.HMAC256(secret))
+            return JWT.require(signingAlgorithm())
             .withIssuer("frigus")
             .build()
             .verify(accessToken);
@@ -72,5 +82,12 @@ public class TokenProvider {
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private Algorithm signingAlgorithm() {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT_SECRET must contain at least 32 bytes");
+        }
+        return Algorithm.HMAC256(secret);
     }
 }

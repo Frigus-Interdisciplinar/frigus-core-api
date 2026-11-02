@@ -4,14 +4,34 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 public final class MoneySavingDtos {
     private MoneySavingDtos() {}
 
-    public record PurchaseLineInput(Long id, Integer stockId, Integer productId, LocalDate expireDate,
-                                    Integer quantity, BigDecimal unitPrice, String category) {}
-    public record PurchaseInput(LocalDate purchaseDate, String source, String receiptReference,
-                                Integer version, List<PurchaseLineInput> lines) {}
+    public record PurchaseLineInput(
+            @Positive Long id,
+            @Positive Integer stockId,
+            @Positive Integer productId,
+            LocalDate expireDate,
+            @NotNull @Positive Integer quantity,
+            @NotNull @DecimalMin(value = "0.01") @Digits(integer = 8, fraction = 2) BigDecimal unitPrice,
+            @Size(max = 64) String category) {}
+
+    public record PurchaseInput(
+            @NotNull LocalDate purchaseDate,
+            @NotBlank @Size(max = 32) String source,
+            @Size(max = 160) String receiptReference,
+            @PositiveOrZero Integer version,
+            @NotEmpty List<@NotNull @Valid PurchaseLineInput> lines) {}
     public record PurchaseLine(Long id, Integer stockKey, Integer stockProductId, String productName, String category,
                                String categoryGroup, String unitOfMeasure, LocalDate expireDate,
                                int quantity, BigDecimal unitPrice, BigDecimal total) {}

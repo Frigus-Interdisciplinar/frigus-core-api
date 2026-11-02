@@ -4,7 +4,7 @@ kind: ClusterConfig
 metadata:
   name: frigus-prod
   # Set this to the AWS Region you choose before creating the cluster.
-  region: sa-east-1
+  region: us-east-1
 
 iam:
   # Required for IAM Roles for Service Accounts (AWS Load Balancer Controller).

@@ -19,9 +19,10 @@ public interface ConversationRepository extends BaseRepository<Conversation, UUI
     @Query(value = "SELECT fn_pair_key(:userA, :userB)", nativeQuery = true)
     String getPairKeyFromDb(@Param("userA") UUID userA, @Param("userB") UUID userB);
 
-    @Query("SELECT cp.conversation FROM ConversationParticipant cp " +
-           "WHERE cp.user.id = :userId AND cp.leftAt IS NULL " +
-           "ORDER BY cp.conversation.updatedAt DESC")
+    @Query("SELECT c FROM Conversation c LEFT JOIN FETCH c.group " +
+           "WHERE c.id IN (SELECT cp.id.conversationId FROM ConversationParticipant cp " +
+           "WHERE cp.user.id = :userId AND cp.leftAt IS NULL) " +
+           "ORDER BY c.updatedAt DESC")
     List<Conversation> findActiveConversationsByUserId(@Param("userId") UUID userId);
 
     @Query("SELECT c FROM Conversation c " +

@@ -19,6 +19,9 @@
         <aws.sdk.version>2.31.55</aws.sdk.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <jackson-annotations.version>2.21</jackson-annotations.version>
+        <jackson2.version>2.21.8</jackson2.version>
+        <spring-data-commons.version>4.0.6</spring-data-commons.version>
+        <bouncycastle.version>1.86</bouncycastle.version>
     </properties>
 
     <dependencies>
@@ -108,7 +111,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
-            <version>1.79</version>
+            <version>${bouncycastle.version}</version>
         </dependency>
 
         <dependency>
@@ -135,6 +138,21 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.data</groupId>
+                <artifactId>spring-data-commons</artifactId>
+                <version>${spring-data-commons.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson2.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-annotations</artifactId>

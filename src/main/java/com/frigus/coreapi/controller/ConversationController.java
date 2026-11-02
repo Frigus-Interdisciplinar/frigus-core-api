@@ -7,6 +7,7 @@ import com.frigus.coreapi.dto.conversation.CreatePrivateConversationRequestDto;
 import com.frigus.coreapi.dto.message.MessageResponseDto;
 import com.frigus.coreapi.dto.message.MessageSendDto;
 import com.frigus.coreapi.dto.message.MessageReactionDto;
+import com.frigus.coreapi.dto.message.MessageReactionRequestDto;
 import com.frigus.coreapi.service.ConversationService;
 import com.frigus.coreapi.service.MessageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,7 +21,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -106,8 +106,11 @@ public class ConversationController {
     }
 
     @PutMapping("/{id}/messages/{messageId}/reactions")
-    public List<MessageReactionDto> addReaction(@PathVariable UUID id, @PathVariable Integer messageId, @RequestBody Map<String, String> body) {
-        return messageService.addReaction(id, messageId, body.get("emoji"));
+    public List<MessageReactionDto> addReaction(
+            @PathVariable UUID id,
+            @PathVariable Integer messageId,
+            @Valid @RequestBody MessageReactionRequestDto request) {
+        return messageService.addReaction(id, messageId, request.emoji());
     }
 
     @DeleteMapping("/{id}/messages/{messageId}/reactions")

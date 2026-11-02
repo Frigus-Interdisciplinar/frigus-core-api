@@ -38,7 +38,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.Locale;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -70,7 +73,15 @@ public class MessageService {
         var messages = search == null || search.isBlank()
                 ? messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 : messageRepository.searchByConversationId(conversationId, search.trim(), pageable);
-        return messages.map(message -> withAttachments(messageMapper.toDto(message), message));
+        List<Integer> messageIds = messages.getContent().stream().map(Message::getId).toList();
+        Map<Integer, List<MessageAttachment>> attachmentsByMessage = new HashMap<>();
+        if (!messageIds.isEmpty()) {
+            messageAttachmentRepository.findByMessageIdsOrderByMessageAndId(messageIds).forEach(attachment ->
+                    attachmentsByMessage.computeIfAbsent(attachment.getMessage().getId(), ignored -> new ArrayList<>())
+                            .add(attachment));
+        }
+        return messages.map(message -> withAttachments(messageMapper.toDto(message),
+                attachmentsByMessage.getOrDefault(message.getId(), List.of())));
     }
 
     @Transactional
@@ -235,7 +246,11 @@ public class MessageService {
     }
 
     private MessageResponseDto withAttachments(MessageResponseDto dto, Message message) {
-        dto.setAttachments(messageAttachmentRepository.findByMessage_IdOrderByIdAsc(message.getId()).stream()
+        return withAttachments(dto, messageAttachmentRepository.findByMessage_IdOrderByIdAsc(message.getId()));
+    }
+
+    private MessageResponseDto withAttachments(MessageResponseDto dto, List<MessageAttachment> attachments) {
+        dto.setAttachments(attachments.stream()
                 .map(file -> MessageAttachmentResponseDto.builder().id(file.getId()).fileUrl(file.getFileUrl())
                         .fileName(file.getFileName()).mimeType(file.getMimeType()).fileSize(file.getFileSize())
                         .createdAt(file.getCreatedAt()).build()).toList());

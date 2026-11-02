@@ -1,20 +1,25 @@
 package com.frigus.coreapi.security;
 
+import com.frigus.coreapi.dto.ErrorResponseDto;
 import com.frigus.coreapi.model.User;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -27,6 +32,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final StringRedisTemplate redis;
     private final MeterRegistry meters;
+    private final ObjectMapper objectMapper;
 
     @Value("${SECURITY_RATE_LIMIT_AUTH:10}") private int authLimit;
     @Value("${SECURITY_RATE_LIMIT_AI:20}") private int aiLimit;
@@ -61,20 +67,37 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         String key = "rate-limit:" + path + ":" + scope;
-        List<?> result = redis.execute(LIMIT_SCRIPT, List.of(key), String.valueOf(windowSeconds));
+        List<?> result;
+        try {
+            result = redis.execute(LIMIT_SCRIPT, List.of(key), String.valueOf(windowSeconds));
+        } catch (DataAccessException exception) {
+            writeProblem(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "SERVICE_UNAVAILABLE", "Limitador de requisições indisponível",
+                    "Tente novamente mais tarde.");
+            return;
+        }
         if (result == null || result.size() != 2) {
-            response.sendError(503, "Rate limit unavailable");
+            writeProblem(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "SERVICE_UNAVAILABLE", "Limitador de requisições indisponível",
+                    "Tente novamente mais tarde.");
             return;
         }
         if (((Number) result.get(0)).longValue() > limit) {
             meters.counter("security.rate_limit.blocked", "route", path).increment();
-            response.setStatus(429);
             response.setHeader("Retry-After", String.valueOf(Math.max(1, ((Number) result.get(1)).longValue())));
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\":\"Limite de requisições excedido\"}");
+            writeProblem(response, 429, "TOO_MANY_REQUESTS", "Limite de requisições excedido",
+                    "Aguarde antes de tentar novamente.");
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    private void writeProblem(HttpServletResponse response, int status, String code,
+                              String message, String displayMessage) throws IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        objectMapper.writeValue(response.getOutputStream(), new ErrorResponseDto(
+                status, code, message, displayMessage, Instant.now()));
     }
 
     private String clientAddress(HttpServletRequest request) {
