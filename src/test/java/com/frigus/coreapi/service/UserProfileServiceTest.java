@@ -102,9 +102,12 @@ class UserProfileServiceTest {
     }
 
     @Test
-    void deletesThePersistedCurrentUser() {
+    void softDeletesThePersistedCurrentUserAndRevokesExistingTokens() {
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         service.deleteCurrentUser(user);
-        verify(repository).delete(user);
+        assertThat(user.getDeletedAt()).isNotNull();
+        assertThat(user.getTokenVersion()).isEqualTo(1);
+        verify(repository).save(user);
+        verify(repository, never()).delete(user);
     }
 }

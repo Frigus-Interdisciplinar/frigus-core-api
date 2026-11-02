@@ -7,7 +7,9 @@ import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -50,7 +52,17 @@ public class UserService extends BaseService<User, UUID, UserRegisterRequestDto,
         repository.save(user);
     }
 
+    @Transactional
     public void deleteUser(UUID userId) {
         delete(userId);
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID userId) {
+        User user = repository.findById(userId).orElseThrow(NotFoundException::new);
+        user.setDeletedAt(Instant.now());
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        repository.save(user);
     }
 }

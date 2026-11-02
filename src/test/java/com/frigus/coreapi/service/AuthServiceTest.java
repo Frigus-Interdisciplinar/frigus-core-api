@@ -99,6 +99,11 @@ class AuthServiceTest {
         when(userRepository.findByEmail("missing@frigus.com")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email("missing@frigus.com").rawPassword("x").build()))
                 .isInstanceOf(UnauthorizedException.class);
+
+        user.setDeletedAt(java.time.Instant.now());
+        assertThatThrownBy(() -> service.login(LoginRequestDto.builder().email(user.getEmail()).rawPassword("Senha@123").build()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(refreshTokenService, times(1)).createRefreshToken(user.getId(), user.getTokenVersion());
     }
 
     @Test
@@ -119,6 +124,17 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.refreshToken("invalid")).isInstanceOf(UnauthorizedException.class);
         when(refreshTokenService.validateAndGetUserId("missing-user")).thenReturn(UUID.randomUUID());
         assertThatThrownBy(() -> service.refreshToken("missing-user")).isInstanceOf(UnauthorizedException.class);
+    }
+
+    @Test
+    void refreshRejectsSoftDeletedUsers() {
+        user.setDeletedAt(java.time.Instant.now());
+        when(refreshTokenService.validateAndGetUserId("deleted-user-refresh")).thenReturn(user.getId());
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.refreshToken("deleted-user-refresh"))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(refreshTokenService, never()).deleteRefreshToken(anyString());
     }
 
     @Test
@@ -190,5 +206,24 @@ class AuthServiceTest {
         assertThat(result.getAccessToken()).isEqualTo("access-token");
         assertThat(user.getGoogleId()).isEqualTo("google-123");
         verify(userRepository).save(user);
+    }
+
+    @Test
+    void loginWithGoogleRejectsSoftDeletedAccounts() {
+        user.setDeletedAt(java.time.Instant.now());
+        var googleData = GoogleTokenVerifierService.GoogleUserData.builder()
+                .googleId("google-123")
+                .email(user.getEmail())
+                .name(user.getName())
+                .emailVerified(true)
+                .build();
+        when(googleTokenVerifierService.verify("valid-token")).thenReturn(googleData);
+        when(userRepository.findByGoogleId("google-123")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.loginWithGoogle(
+                com.frigus.coreapi.dto.user.GoogleLoginRequestDto.builder().idToken("valid-token").build()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenService, never()).createRefreshToken(any(UUID.class), anyInt());
     }
 }
