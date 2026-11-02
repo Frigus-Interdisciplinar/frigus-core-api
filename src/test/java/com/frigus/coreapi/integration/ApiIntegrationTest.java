@@ -251,6 +251,9 @@ class ApiIntegrationTest {
         User registered = users.findByEmail("new@example.test").orElseThrow();
         assertThat(registered.getHashPassword()).isNotEqualTo("Strong123!");
         assertThat(passwords.matches("Strong123!", registered.getHashPassword())).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM groups WHERE owner_id=? AND deleted_at IS NULL", Integer.class, registered.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_groups ug JOIN groups g ON g.id=ug.group_id WHERE ug.user_id=? AND g.deleted_at IS NULL", Integer.class, registered.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stocks s JOIN groups g ON g.id=s.group_id WHERE g.owner_id=? AND s.deleted_at IS NULL AND g.deleted_at IS NULL", Integer.class, registered.getId())).isEqualTo(1);
         when(refreshTokens.createRefreshToken(registered.getId(),registered.getTokenVersion())).thenReturn("test-refresh");
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                         .content("{\"email\":\"new@example.test\",\"rawPassword\":\"Strong123!\"}"))

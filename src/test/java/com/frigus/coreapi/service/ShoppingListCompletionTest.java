@@ -23,6 +23,31 @@ import static org.mockito.Mockito.when;
 
 class ShoppingListCompletionTest {
     @Test
+    void autoCompletingAfterLastItemSetsCompletionTimeForReports() {
+        UUID listId = UUID.randomUUID();
+        ShoppingListRepository lists = mock(ShoppingListRepository.class);
+        ShoppingListMapper mapper = mock(ShoppingListMapper.class);
+        StockRepository stocks = mock(StockRepository.class);
+        GroupAccessService access = mock(GroupAccessService.class);
+        ShoppingListProductService items = mock(ShoppingListProductService.class);
+        ShoppingListProductRepository listProducts = mock(ShoppingListProductRepository.class);
+        StockProductRepository stockProducts = mock(StockProductRepository.class);
+        ShoppingListService service = new ShoppingListService(
+                lists, mapper, stocks, access, items, listProducts, stockProducts);
+        ShoppingList list = ShoppingList.builder().id(listId).status(ListStatus.OPEN).build();
+        when(lists.findById(listId)).thenReturn(Optional.of(list));
+        when(listProducts.countByListId(listId)).thenReturn(1L);
+        when(listProducts.existsByListIdAndStatusNotIn(listId, List.of(ProductListStatus.PURCHASED, ProductListStatus.REMOVED)))
+                .thenReturn(false);
+        when(lists.save(any(ShoppingList.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.checkAndAutoCloseList(listId);
+
+        assertThat(list.getStatus()).isEqualTo(ListStatus.COMPLETED);
+        assertThat(list.getCompletedAt()).isNotNull();
+    }
+
+    @Test
     void completesListAndPersistsSupplierAndCompletionTime() {
         UUID listId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();

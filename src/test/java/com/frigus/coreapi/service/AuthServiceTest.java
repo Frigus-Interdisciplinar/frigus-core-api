@@ -36,6 +36,7 @@ class AuthServiceTest {
     @Mock private UserMapper userMapper;
     @Mock private RefreshTokenService refreshTokenService;
     @Mock private GoogleTokenVerifierService googleTokenVerifierService;
+    @Mock private GroupService groupService;
     @InjectMocks private AuthService service;
 
     private User user;
@@ -62,6 +63,7 @@ class AuthServiceTest {
         assertThat(saved.getValue().getAccountType()).isEqualTo(AccountType.DOMESTIC);
         assertThat(saved.getValue().isPlanSelectionRequired()).isTrue();
         assertThat(result.getId()).isEqualTo(user.getId());
+        verify(groupService).provisionInitialWorkspace(user);
     }
 
     @Test
@@ -182,6 +184,7 @@ class AuthServiceTest {
         verify(userRepository).save(captor.capture());
         assertThat(captor.getValue().getGoogleId()).isEqualTo("google-123");
         assertThat(captor.getValue().getHashPassword()).isNull();
+        verify(groupService).provisionInitialWorkspace(captor.getValue());
     }
 
     @Test
@@ -206,6 +209,7 @@ class AuthServiceTest {
         assertThat(result.getAccessToken()).isEqualTo("access-token");
         assertThat(user.getGoogleId()).isEqualTo("google-123");
         verify(userRepository).save(user);
+        verify(groupService, never()).provisionInitialWorkspace(any(User.class));
     }
 
     @Test

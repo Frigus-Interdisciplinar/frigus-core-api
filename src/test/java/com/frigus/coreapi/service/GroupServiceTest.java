@@ -15,12 +15,14 @@ import com.frigus.coreapi.exception.NotFoundException;
 import com.frigus.coreapi.mapper.GroupMapper;
 import com.frigus.coreapi.model.Conversation;
 import com.frigus.coreapi.model.ConversationParticipant;
+import com.frigus.coreapi.model.ConversationParticipantId;
 import com.frigus.coreapi.model.Group;
 import com.frigus.coreapi.model.User;
 import com.frigus.coreapi.model.UserGroup;
 import com.frigus.coreapi.repository.ConversationParticipantRepository;
 import com.frigus.coreapi.repository.ConversationRepository;
 import com.frigus.coreapi.repository.GroupRepository;
+import com.frigus.coreapi.repository.StockRepository;
 import com.frigus.coreapi.repository.UserGroupRepository;
 import com.frigus.coreapi.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -47,6 +49,45 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class GroupServiceTest {
+    @Test
+    void provisionInitialWorkspaceCreatesGroupMembershipConversationAndDefaultStock() {
+        UUID conversationId = UUID.randomUUID();
+        when(groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(false);
+        when(groupRepository.save(any(Group.class))).thenAnswer(invocation -> {
+            Group group = invocation.getArgument(0);
+            group.setId(UUID.randomUUID());
+            return group;
+        });
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> {
+            Conversation conversation = invocation.getArgument(0);
+            conversation.setId(conversationId);
+            return conversation;
+        });
+
+        groupService.provisionInitialWorkspace(currentUser);
+
+        org.mockito.ArgumentCaptor<Group> group = org.mockito.ArgumentCaptor.forClass(Group.class);
+        verify(groupRepository).save(group.capture());
+        assertThat(group.getValue().getOwner()).isSameAs(currentUser);
+        assertThat(group.getValue().getName()).isEqualTo(currentUser.getName());
+        verify(userGroupRepository).save(any(UserGroup.class));
+        verify(conversationRepository).save(argThat(conversation -> conversation.getGroup() == group.getValue()));
+        verify(conversationParticipantRepository).save(argThat(participant ->
+                participant.getId().equals(new ConversationParticipantId(conversationId, currentUser.getId()))));
+        verify(stockRepository).save(argThat(stock -> stock.getGroup() == group.getValue()
+                && stock.getName().equals("Estoque principal")));
+    }
+
+    @Test
+    void provisionInitialWorkspaceIsIdempotentForExistingUsers() {
+        when(groupRepository.existsByOwnerIdAndDeletedAtIsNull(currentUser.getId())).thenReturn(true);
+
+        groupService.provisionInitialWorkspace(currentUser);
+
+        verifyNoInteractions(stockRepository, userGroupRepository, conversationRepository, conversationParticipantRepository);
+        verify(groupRepository, never()).save(any(Group.class));
+    }
+
     @Test
     void freePlanCannotCreateGroupOrAnyRelatedRecords() {
         when(planLimitsResolverService.resolveLimitsForCurrentUser())
@@ -81,6 +122,9 @@ class GroupServiceTest {
 
     @Mock
     private GroupRepository groupRepository;
+
+    @Mock
+    private StockRepository stockRepository;
 
     @Mock
     private UserGroupRepository userGroupRepository;

@@ -33,6 +33,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final RefreshTokenService refreshTokenService;
     private final GoogleTokenVerifierService googleTokenVerifierService;
+    private final GroupService groupService;
 
     public UserResponseDto register(UserRegisterRequestDto body) {
         if (userRepository.existsByEmail(body.getEmail())) {
@@ -56,6 +57,7 @@ public class AuthService {
                 .createdAt(Instant.now())
                 .build();
         user = userRepository.save(user);
+        groupService.provisionInitialWorkspace(user);
 
         return UserResponseDto.builder()
                 .id(user.getId())
@@ -121,6 +123,7 @@ public class AuthService {
                     .createdAt(Instant.now())
                     .build();
             user = userRepository.save(user);
+            groupService.provisionInitialWorkspace(user);
         }
 
         return createLoginResponse(user, userAgent);
