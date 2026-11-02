@@ -29,14 +29,13 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 @ExtendWith(OutputCaptureExtension.class)
 class FrigusAiClientTest {
-    private static final String API_KEY = "test-public-api-key-with-at-least-32-characters";
-    private static final String CORE_SERVICE_KEY = "test-core-service-key-with-at-least-32-characters";
+    private static final String SERVICE_KEY = "test-service-key-with-at-least-32-characters";
     private MockRestServiceServer server;
     private FrigusAiClient client;
 
     @BeforeEach
     void setUp() {
-        client = new FrigusAiClient("http://ai.example.test", API_KEY, true, CORE_SERVICE_KEY);
+        client = new FrigusAiClient("http://ai.example.test", SERVICE_KEY, true);
         RestClient.Builder builder = ((RestClient) ReflectionTestUtils.getField(client, "restClient")).mutate();
         server = MockRestServiceServer.bindTo(builder).build();
         // Bind the existing client to an in-memory HTTP transport; no real network requests.
@@ -97,17 +96,17 @@ class FrigusAiClientTest {
                 .contentType(MediaType.APPLICATION_JSON).body("{\"detail\":\"private-provider-body\"}"));
         assertUnavailable("existing");
         assertThat(output.getAll()).contains("upstreamStatus=422", "stockId=7", "HttpClientErrorException")
-                .doesNotContain("private-provider-body", API_KEY, CORE_SERVICE_KEY);
+                .doesNotContain("private-provider-body", SERVICE_KEY);
     }
 
     @Test
     void sendsLargeReceiptProductListsInBatchesOfTenAndCombinesResults() {
         server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
-                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", API_KEY))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", SERVICE_KEY))
                 .andExpect(jsonPath("$.products", hasSize(10)))
                 .andRespond(withSuccess(invoiceItem(1), MediaType.APPLICATION_JSON));
         server.expect(requestTo("http://ai.example.test/v1/invoices/extract"))
-                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", API_KEY))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("X-API-Key", SERVICE_KEY))
                 .andExpect(jsonPath("$.products", hasSize(1)))
                 .andRespond(withSuccess(invoiceItem(11), MediaType.APPLICATION_JSON));
 
@@ -129,14 +128,14 @@ class FrigusAiClientTest {
 
     @Test
     void requiredApiKeyFailsBeforeAnyRequest() {
-        assertThatThrownBy(() -> new FrigusAiClient("http://ai.example.test", "", true, CORE_SERVICE_KEY))
+        assertThatThrownBy(() -> new FrigusAiClient("http://ai.example.test", "", true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageNotContaining("test-api-key");
     }
 
     private org.springframework.test.web.client.ResponseActions expectMessage(String session) {
         return server.expect(requestTo("http://ai.example.test/internal/core/chat"))
-                .andExpect(header("X-Core-Service-Key", CORE_SERVICE_KEY))
+                .andExpect(header("X-Core-Service-Key", SERVICE_KEY))
                 .andExpect(method(HttpMethod.POST)).andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("{\"userId\":\"123e4567-e89b-12d3-a456-426614174000\",\"message\":\"Dinner?\",\"stockId\":7,\"foodPreferences\":[\"VEGAN\"],\"sessionId\":" +
                         (session == null ? "null" : "\"" + session + "\"") + "}"));

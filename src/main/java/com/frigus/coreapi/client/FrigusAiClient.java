@@ -23,17 +23,14 @@ public class FrigusAiClient {
     private final RestClient restClient;
     private final boolean configured;
     private final String apiKey;
-    private final String coreServiceKey;
 
     public FrigusAiClient(
             @Value("${FRIGUS_AI_BASE_URL:http://localhost:8000}") String baseUrl,
             @Value("${FRIGUS_AI_API_KEY:}") String apiKey,
-            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired,
-            @Value("${FRIGUS_AI_CORE_SERVICE_KEY:}") String coreServiceKey) {
-        this.configured = coreServiceKey != null && coreServiceKey.length() >= 32;
+            @Value("${FRIGUS_AI_API_KEY_REQUIRED:false}") boolean apiKeyRequired) {
+        this.configured = apiKey != null && apiKey.length() >= 32;
         this.apiKey = apiKey;
-        this.coreServiceKey = coreServiceKey;
-        if (apiKeyRequired && (apiKey == null || apiKey.length() < 32)) {
+        if (apiKeyRequired && !configured) {
             throw new IllegalStateException("FRIGUS_AI_API_KEY is required");
         }
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -92,7 +89,7 @@ public class FrigusAiClient {
                     payload.getFoodPreferences() == null ? List.of() : payload.getFoodPreferences());
             FrigusAiRecipeResponse response = restClient.post()
                     .uri("/internal/core/chat")
-                    .header("X-Core-Service-Key", coreServiceKey)
+                    .header("X-Core-Service-Key", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()

@@ -13,8 +13,9 @@ A integração de chat usa o contrato interno já existente no Python: `POST /in
 ## Configuração necessária
 
 - `FRIGUS_AI_BASE_URL`: origem HTTP(S) ou configuração legada terminada em `/v1` ou `/v1/`. O cliente normaliza uma vez para a origem. Chat usa `/internal/core/chat`; NFC-e continua em `/v1/invoices/extract`. Outros prefixos, credenciais na URL, query e fragmento são rejeitados com erro que identifica a variável, sem mostrar seu valor.
-- `FRIGUS_AI_API_KEY`: chave pública existente de NFC-e, enviada em `X-API-Key` somente na extração. `FRIGUS_AI_API_KEY_REQUIRED` conserva a validação da chave pública.
-- `FRIGUS_AI_CORE_SERVICE_KEY`: chave interna dedicada, com pelo menos 32 caracteres, igual à `API_KEYS__CORE_SERVICE_KEY` do Python. É enviada em `X-Core-Service-Key` somente no chat interno. Ausência dessa chave bloqueia o chat com erro amigável; não desativa a extração de NFC-e e não reutiliza silenciosamente a chave pública.
+- `FRIGUS_AI_API_KEY`: credencial server-to-server já existente. A Core a envia como `X-API-Key` para NFC-e e como `X-Core-Service-Key` para o chat interno. O valor deve corresponder a `API_KEYS__CORE_SERVICE_KEY` no serviço Python. `FRIGUS_AI_API_KEY_REQUIRED` conserva a validação de inicialização dessa credencial.
+
+Não é necessário criar `FRIGUS_AI_CORE_SERVICE_KEY` na Core. Um segredo separado seria uma opção de isolamento operacional, mas o contrato atual reutiliza o valor que já existe.
 
 Não há novo endpoint público. A rota interna precisa existir na revisão Python implantada; aplicar apenas o Core contra um Python antigo não estabelece esse contrato. Conversas criadas pela API pública legada podem não pertencer à identidade interna do Core; nesse caso, iniciar outra conversa explicitamente, sem reenviar automaticamente a mensagem anterior.
 
